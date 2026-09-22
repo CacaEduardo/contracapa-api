@@ -6,7 +6,14 @@ services:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+    command: ["--quiet"]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })' >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   api:
     build:
@@ -14,15 +21,25 @@ services:
       dockerfile: Dockerfile
     container_name: biblioteca-virtual-api
     ports:
-      - "3001:8080"
-    env_file:
-      - .env
+      - "8080:8080"
     environment:
-      - NODE_ENV=production
-      - PORT=8080
-      - MONGO_URL=mongodb://mongo:27017/biblioteca-virtual
+      NODE_ENV: production
+      PORT: "8080"
+      MONGO_URL: mongodb://mongo:27017/biblioteca-virtual
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN is required}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL is required}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY is required}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:?AWS_DEFAULT_REGION is required}
+      BUCKET_NAME: ${BUCKET_NAME:?BUCKET_NAME is required}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM_EMAIL: ${MAIL_FROM_EMAIL:-}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-}
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

@@ -1,21 +1,21 @@
-# Etapa 1: Build
 FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+ENV HUSKY=0
+
 RUN apk add --no-cache python3 make g++
 
 COPY package.json yarn.lock ./
-RUN HUSKY=0 yarn install --frozen-lockfile
+RUN yarn install --frozen-lockfile
 
 COPY nest-cli.json tsconfig.json tsconfig.build.json ./
 COPY src ./src
 
 RUN yarn build \
-  && HUSKY=0 yarn install --frozen-lockfile --production \
+  && yarn install --frozen-lockfile --production --ignore-scripts \
   && yarn cache clean
 
-# Etapa 2: Runtime
 FROM node:22-alpine AS runner
 
 WORKDIR /app
