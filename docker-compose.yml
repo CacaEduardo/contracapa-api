@@ -1,0 +1,29 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: biblioteca-virtual-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: biblioteca-virtual-api
+    ports:
+      - "3001:8080"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - MONGO_URL=mongodb://mongo:27017/biblioteca-virtual
+    depends_on:
+      - mongo
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
