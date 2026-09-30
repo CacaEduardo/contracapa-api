@@ -55,7 +55,7 @@ type BookQueryFilter = {
 const IN_USE_MESSAGE =
   'Este livro está indicado em resenhas. Inative-o para tirá-lo do catálogo.';
 
-const RELATED_BOOKS_LIMIT = 4;
+const RELATED_BOOKS_LIMIT = 12;
 
 @Injectable()
 export class BooksService {

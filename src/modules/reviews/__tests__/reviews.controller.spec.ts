@@ -27,7 +27,7 @@ describe('ReviewsController', () => {
   });
 
   it('deve listar resenhas paginadas via service', async () => {
-    const query = { expert: 'ana-souza', page: 2, pageSize: 10 };
+    const query = { experts: ['ana-souza'], page: 2, pageSize: 10 };
     mockReviewsService.findAll.mockResolvedValue({ items: [] });
 
     await controller.findAll(query);

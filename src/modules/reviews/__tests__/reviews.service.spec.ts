@@ -51,7 +51,7 @@ describe('ReviewsService', () => {
   const mockExpertsService = {
     findById: jest.fn(),
     findByIds: jest.fn(),
-    findBySlug: jest.fn(),
+    findBySlugs: jest.fn(),
     setReviewCount: jest.fn(),
   };
 
@@ -244,22 +244,36 @@ describe('ReviewsService', () => {
       expect(result).toMatchObject({ total: 11, totalPages: 2, page: 2 });
     });
 
-    it('deve filtrar pelo slug do especialista', async () => {
-      mockExpertsService.findBySlug.mockResolvedValue({
-        _id: { toString: () => EXPERT },
+    it('deve filtrar pelos slugs dos especialistas', async () => {
+      const other = '507f1f77bcf86cd799439088';
+      mockExpertsService.findBySlugs.mockResolvedValue([
+        { _id: { toString: () => EXPERT } },
+        { _id: { toString: () => other } },
+      ]);
+
+      await service.findAll({
+        experts: ['ana-souza', 'bruno-lima'],
+        page: 1,
+        pageSize: 10,
       });
 
-      await service.findAll({ expert: 'ana-souza', page: 1, pageSize: 10 });
-
-      expect(mockReviewModel.find).toHaveBeenCalledWith({ expertId: EXPERT });
+      expect(mockExpertsService.findBySlugs).toHaveBeenCalledWith([
+        'ana-souza',
+        'bruno-lima',
+      ]);
+      expect(mockReviewModel.find).toHaveBeenCalledWith({
+        expertId: { $in: [EXPERT, other] },
+      });
     });
 
-    it('não deve devolver resenhas quando o especialista não existir', async () => {
-      mockExpertsService.findBySlug.mockResolvedValue(null);
+    it('não deve devolver resenhas quando nenhum especialista existir', async () => {
+      mockExpertsService.findBySlugs.mockResolvedValue([]);
 
-      await service.findAll({ expert: 'ninguem', page: 1, pageSize: 10 });
+      await service.findAll({ experts: ['ninguem'], page: 1, pageSize: 10 });
 
-      expect(mockReviewModel.find).toHaveBeenCalledWith({ expertId: null });
+      expect(mockReviewModel.find).toHaveBeenCalledWith({
+        expertId: { $in: [] },
+      });
     });
 
     it('deve manter livro inativo na resenha, sinalizado como inativo', async () => {

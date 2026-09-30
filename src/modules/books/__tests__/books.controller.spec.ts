@@ -35,12 +35,12 @@ describe('BooksController', () => {
       total: 0,
       totalPages: 1,
       page: 1,
-      pageSize: 12,
+      pageSize: 15,
     };
     mockBooksService.findAll.mockResolvedValue(result);
 
     await expect(
-      controller.findAll({ sort: 'recentes', page: 1, pageSize: 12 }),
+      controller.findAll({ sort: 'recentes', page: 1, pageSize: 15 }),
     ).resolves.toEqual(result);
   });
 

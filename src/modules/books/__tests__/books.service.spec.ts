@@ -178,7 +178,7 @@ describe('BooksService', () => {
         experts: ['ana-lima'],
         sort: 'az',
         page: 1,
-        pageSize: 12,
+        pageSize: 15,
       });
 
       expect(mockBookModel.find).toHaveBeenCalledWith(
@@ -191,20 +191,20 @@ describe('BooksService', () => {
       );
       expect(sortMock).toHaveBeenCalledWith({ title: 1 });
       expect(skipMock).toHaveBeenCalledWith(0);
-      expect(limitMock).toHaveBeenCalledWith(12);
+      expect(limitMock).toHaveBeenCalledWith(15);
       expect(result).toEqual({
         items: [expect.objectContaining({ slug: 'o-nome-da-rosa' })],
         total: 1,
         totalPages: 1,
         page: 1,
-        pageSize: 12,
+        pageSize: 15,
       });
     });
 
     it('deve ordenar pelos mais recentes cadastrados quando sort=recentes', async () => {
       const { sortMock } = mockListQuery([], 0);
 
-      await service.findAll({ sort: 'recentes', page: 1, pageSize: 12 });
+      await service.findAll({ sort: 'recentes', page: 1, pageSize: 15 });
 
       expect(sortMock).toHaveBeenCalledWith({ createdAt: -1 });
     });
@@ -302,7 +302,7 @@ describe('BooksService', () => {
         active: true,
         categorySlugs: { $in: ['ficcao'] },
       });
-      expect(limitMock).toHaveBeenCalledWith(4);
+      expect(limitMock).toHaveBeenCalledWith(12);
     });
   });
 

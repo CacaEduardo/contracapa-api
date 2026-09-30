@@ -71,9 +71,9 @@ export class ReviewsService {
   async findAll(query: ListReviewsQueryDto): Promise<ListReviewsResult> {
     const filter: Record<string, unknown> = {};
 
-    if (query.expert) {
-      const expert = await this.expertsService.findBySlug(query.expert);
-      filter.expertId = expert?._id.toString() ?? null;
+    if (query.experts?.length) {
+      const experts = await this.expertsService.findBySlugs(query.experts);
+      filter.expertId = { $in: experts.map((expert) => expert._id.toString()) };
     }
 
     const total = await this.reviewModel.countDocuments(filter).exec();

@@ -175,6 +175,24 @@ describe('ExpertsService', () => {
     });
   });
 
+  describe('findBySlugs', () => {
+    it('deve devolver array vazio quando não há slugs para buscar', async () => {
+      await expect(service.findBySlugs([])).resolves.toEqual([]);
+      expect(mockExpertModel.find).not.toHaveBeenCalled();
+    });
+
+    it('deve buscar especialistas pelos slugs informados', async () => {
+      mockExpertModel.find.mockReturnValue(execOf([expert]));
+
+      const result = await service.findBySlugs(['ana-souza']);
+
+      expect(mockExpertModel.find).toHaveBeenCalledWith({
+        slug: { $in: ['ana-souza'] },
+      });
+      expect(result).toEqual([expert]);
+    });
+  });
+
   describe('findAllPublic / findBySlugPublic', () => {
     it('deve listar só ativos com resenha, A–Z, sem e-mail nem telefone', async () => {
       const sortMock = jest

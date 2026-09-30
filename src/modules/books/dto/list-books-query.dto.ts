@@ -20,7 +20,7 @@ const catalogQueryShape = {
 
 export const listBooksQuerySchema = z.object({
   ...catalogQueryShape,
-  pageSize: z.coerce.number().int().min(1).max(48).default(12),
+  pageSize: z.coerce.number().int().min(1).max(48).default(15),
 });
 
 export const listBooksAdminQuerySchema = z.object({

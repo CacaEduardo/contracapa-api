@@ -94,8 +94,12 @@ export class ExpertsService {
     return toPublicExpert(expert);
   }
 
-  async findBySlug(slug: string): Promise<ExpertDocument | null> {
-    return this.expertModel.findOne({ slug }).exec();
+  async findBySlugs(slugs: string[]): Promise<ExpertDocument[]> {
+    if (slugs.length === 0) {
+      return [];
+    }
+
+    return this.expertModel.find({ slug: { $in: slugs } }).exec();
   }
 
   async findByIds(ids: string[]): Promise<PublicExpert[]> {
