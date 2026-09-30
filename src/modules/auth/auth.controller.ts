@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
 import type { JwtPayload } from 'src/common/types/jwt-payload';
@@ -15,7 +23,12 @@ import {
   resetPasswordSchema,
   type ResetPasswordDto,
 } from 'src/modules/auth/dto/reset-password.dto';
+import {
+  googleSignInSchema,
+  type GoogleSignInDto,
+} from 'src/modules/auth/dto/google-signin.dto';
 import { signInSchema, type SignInDto } from 'src/modules/auth/dto/signin.dto';
+import { signUpSchema, type SignUpDto } from 'src/modules/auth/dto/signup.dto';
 import {
   updateProfileSchema,
   type UpdateProfileDto,
@@ -29,6 +42,21 @@ export class AuthController {
   @Public()
   signIn(@Body({ schema: signInSchema }) body: SignInDto) {
     return this.authService.signIn(body);
+  }
+
+  @Post('signup')
+  @Public()
+  signUp(@Body({ schema: signUpSchema }) body: SignUpDto) {
+    return this.authService.signUp(body);
+  }
+
+  @Post('google')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  signInWithGoogle(
+    @Body({ schema: googleSignInSchema }) body: GoogleSignInDto,
+  ) {
+    return this.authService.signInWithGoogle(body);
   }
 
   @Get('me')

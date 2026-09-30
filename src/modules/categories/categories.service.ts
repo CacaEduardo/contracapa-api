@@ -13,6 +13,7 @@ import {
   Category,
   type CategoryDocument,
 } from 'src/modules/categories/schemas/category.schema';
+import { UsersService } from 'src/modules/users/users.service';
 
 @Injectable()
 export class CategoriesService {
@@ -21,6 +22,7 @@ export class CategoriesService {
   constructor(
     @InjectModel(Category.name)
     private readonly categoryModel: Model<CategoryDocument>,
+    private readonly usersService: UsersService,
   ) {}
 
   async create(dto: CreateCategoryDto): Promise<CategoryDocument> {
@@ -78,6 +80,8 @@ export class CategoriesService {
     if (!deleted) {
       throw new NotFoundException('Categoria não encontrada');
     }
+
+    await this.usersService.pullFavoriteCategory(deleted.slug);
   }
 
   async incrementBookCount(slug: string): Promise<void> {

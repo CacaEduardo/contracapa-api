@@ -11,11 +11,15 @@ describe('toPublicUser', () => {
     role: 'user',
     active: true,
     mustChangePassword: false,
+    company: 'Editora X',
+    favoriteCategorySlugs: ['ficcao'],
+    authProvider: 'password',
+    onboardingCompleted: true,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-02'),
   } as unknown as UserDocument;
 
-  it('deve expor role, active e mustChangePassword', () => {
+  it('deve expor papel, status, empresa, favoritos e provedor de login', () => {
     const result = toPublicUser(user);
 
     expect(result).toEqual({
@@ -26,6 +30,10 @@ describe('toPublicUser', () => {
       role: 'user',
       active: true,
       mustChangePassword: false,
+      company: 'Editora X',
+      favoriteCategorySlugs: ['ficcao'],
+      authProvider: 'password',
+      onboardingCompleted: true,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });

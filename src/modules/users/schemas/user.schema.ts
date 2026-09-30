@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
 export type UserRole = 'admin' | 'user';
+export type AuthProvider = 'password' | 'google';
 
 @Schema({ timestamps: true })
 export class User {
@@ -33,6 +34,21 @@ export class User {
 
   @Prop()
   phone?: string;
+
+  @Prop()
+  company?: string;
+
+  @Prop({ type: [String], default: [] })
+  favoriteCategorySlugs!: string[];
+
+  @Prop({ unique: true, sparse: true })
+  googleId?: string;
+
+  @Prop({ required: true, enum: ['password', 'google'], default: 'password' })
+  authProvider!: AuthProvider;
+
+  @Prop({ default: true })
+  onboardingCompleted!: boolean;
 
   @Prop({ select: false })
   passwordResetTokenHash?: string;

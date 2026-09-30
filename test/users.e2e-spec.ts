@@ -29,7 +29,7 @@ import { UsersService } from 'src/modules/users/users.service';
         create: jest.fn(),
         findAll: jest.fn(),
         findOne: jest.fn(),
-        update: jest.fn(),
+        updateByAdmin: jest.fn(),
         resetPassword: jest.fn(),
       },
     },

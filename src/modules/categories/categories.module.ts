@@ -6,12 +6,14 @@ import {
   Category,
   CategorySchema,
 } from 'src/modules/categories/schemas/category.schema';
+import { UsersModule } from 'src/modules/users/users.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Category.name, schema: CategorySchema },
     ]),
+    UsersModule,
   ],
   controllers: [CategoriesController],
   providers: [CategoriesService],

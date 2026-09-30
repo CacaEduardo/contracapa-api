@@ -1,13 +1,21 @@
-import { UserDocument } from 'src/modules/users/schemas/user.schema';
+import type {
+  AuthProvider,
+  UserDocument,
+  UserRole,
+} from 'src/modules/users/schemas/user.schema';
 
 export type PublicUser = {
   _id: string;
   name: string;
   email: string;
   avatarUrl?: string;
-  role: 'admin' | 'user';
+  role: UserRole;
   active: boolean;
   mustChangePassword: boolean;
+  company?: string;
+  favoriteCategorySlugs: string[];
+  authProvider: AuthProvider;
+  onboardingCompleted: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -21,6 +29,10 @@ export function toPublicUser(user: UserDocument): PublicUser {
     role: user.role,
     active: user.active,
     mustChangePassword: user.mustChangePassword,
+    company: user.company || undefined,
+    favoriteCategorySlugs: user.favoriteCategorySlugs ?? [],
+    authProvider: user.authProvider ?? 'password',
+    onboardingCompleted: user.onboardingCompleted ?? true,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };

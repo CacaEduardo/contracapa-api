@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { isValidObjectId, Model } from 'mongoose';
 import { escapeRegExp } from 'src/common/lib/escape-regexp';
 import { slugify } from 'src/common/lib/slugify';
 import {
@@ -23,6 +25,7 @@ import {
 } from 'src/modules/books/schemas/book.schema';
 import { CategoriesService } from 'src/modules/categories/categories.service';
 import { StorageService } from 'src/modules/storage/storage.service';
+import { WishlistsService } from 'src/modules/wishlists/wishlists.service';
 
 export type ListBooksResult = {
   items: BookResponse[];
@@ -55,6 +58,8 @@ export class BooksService {
     @InjectModel(Book.name) private readonly bookModel: Model<BookDocument>,
     private readonly categoriesService: CategoriesService,
     private readonly storageService: StorageService,
+    @Inject(forwardRef(() => WishlistsService))
+    private readonly wishlistsService: WishlistsService,
   ) {}
 
   async create(dto: CreateBookDto): Promise<BookResponse> {
@@ -178,6 +183,17 @@ export class BooksService {
     return book;
   }
 
+  async findByIds(ids: string[]): Promise<BookResponse[]> {
+    const validIds = ids.filter((id) => isValidObjectId(id));
+
+    if (validIds.length === 0) {
+      return [];
+    }
+
+    const books = await this.bookModel.find({ _id: { $in: validIds } }).exec();
+    return this.toResponseList(books);
+  }
+
   async findByIdResponse(id: string): Promise<BookResponse> {
     const book = await this.findById(id);
     return this.toResponse(book);
@@ -227,6 +243,7 @@ export class BooksService {
 
     await this.bookModel.findByIdAndDelete(id).exec();
     await this.syncCategoryCounts(book.categorySlugs, []);
+    await this.wishlistsService.pullBook(id);
 
     if (book.coverKey) {
       await this.storageService.deleteImage(book.coverKey);

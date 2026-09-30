@@ -1,12 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'node:crypto';
 import { AuthService } from 'src/modules/auth/auth.service';
+import { GoogleIdentityService } from 'src/modules/auth/google-identity.service';
+import { CategoriesService } from 'src/modules/categories/categories.service';
 import { MailService } from 'src/modules/mail/mail.service';
 import { UsersService } from 'src/modules/users/users.service';
+import { WishlistsService } from 'src/modules/wishlists/wishlists.service';
 import { UserDocument } from 'src/modules/users/schemas/user.schema';
 
 jest.mock('bcrypt', () => ({
@@ -31,6 +39,21 @@ describe('AuthService', () => {
     setPassword: jest.fn(),
     setPasswordResetToken: jest.fn(),
     update: jest.fn(),
+    create: jest.fn(),
+    findByGoogleId: jest.fn(),
+    linkGoogleAccount: jest.fn(),
+  };
+
+  const mockCategoriesService = {
+    existsAllSlugs: jest.fn(),
+  };
+
+  const mockWishlistsService = {
+    ensureDefault: jest.fn(),
+  };
+
+  const mockGoogleIdentityService = {
+    verify: jest.fn(),
   };
 
   const mockJwtService = {
@@ -62,6 +85,12 @@ describe('AuthService', () => {
         { provide: UsersService, useValue: mockUsersService },
         { provide: JwtService, useValue: mockJwtService },
         { provide: MailService, useValue: mockMailService },
+        { provide: CategoriesService, useValue: mockCategoriesService },
+        { provide: WishlistsService, useValue: mockWishlistsService },
+        {
+          provide: GoogleIdentityService,
+          useValue: mockGoogleIdentityService,
+        },
         { provide: ConfigService, useValue: mockConfig },
       ],
     }).compile();
@@ -103,10 +132,29 @@ describe('AuthService', () => {
         role: 'user',
         active: true,
         mustChangePassword: false,
+        company: undefined,
+        favoriteCategorySlugs: [],
+        authProvider: 'password',
+        onboardingCompleted: true,
         createdAt: undefined,
         updatedAt: undefined,
       });
       expect(result.user).not.toHaveProperty('password');
+    });
+
+    it('deve orientar o login com Google quando a conta não tem senha', async () => {
+      mockUsersService.findByEmailWithPassword.mockResolvedValue({
+        ...userWithPassword,
+        password: undefined,
+        authProvider: 'google',
+      });
+
+      await expect(
+        service.signIn({ email: 'teste@example.com', password: 'senha123' }),
+      ).rejects.toMatchObject({
+        response: { message: 'Esta conta usa login com Google' },
+      });
+      expect(bcrypt.compare).not.toHaveBeenCalled();
     });
 
     it('deve lançar UnauthorizedException se o usuário não existir', async () => {
@@ -174,6 +222,148 @@ describe('AuthService', () => {
     });
   });
 
+  describe('signUp', () => {
+    const signUpDto = {
+      name: 'Ana Silva',
+      email: 'ana@example.com',
+      password: 'senha1234',
+      company: 'Editora X',
+      favoriteCategorySlugs: ['ficcao'],
+    };
+
+    const createdUser = {
+      _id: '2',
+      name: 'Ana Silva',
+      email: 'ana@example.com',
+      role: 'user',
+      active: true,
+      mustChangePassword: false,
+      favoriteCategorySlugs: ['ficcao'],
+      authProvider: 'password',
+      onboardingCompleted: true,
+    };
+
+    it('deve criar leitor, a lista padrão e devolver token', async () => {
+      mockCategoriesService.existsAllSlugs.mockResolvedValue([]);
+      mockUsersService.create.mockResolvedValue(createdUser);
+      mockJwtService.sign.mockReturnValue('token.novo');
+
+      const result = await service.signUp(signUpDto);
+
+      expect(mockUsersService.create).toHaveBeenCalledWith({
+        name: 'Ana Silva',
+        email: 'ana@example.com',
+        password: 'senha1234',
+        company: 'Editora X',
+        favoriteCategorySlugs: ['ficcao'],
+        role: 'user',
+        authProvider: 'password',
+        onboardingCompleted: true,
+      });
+      expect(mockWishlistsService.ensureDefault).toHaveBeenCalledWith('2');
+      expect(result).toEqual({ user: createdUser, token: 'token.novo' });
+    });
+
+    it('deve recusar categorias inexistentes sem criar o usuário', async () => {
+      mockCategoriesService.existsAllSlugs.mockResolvedValue(['inexistente']);
+
+      await expect(service.signUp(signUpDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockUsersService.create).not.toHaveBeenCalled();
+    });
+
+    it('deve propagar o 409 de e-mail já cadastrado', async () => {
+      mockCategoriesService.existsAllSlugs.mockResolvedValue([]);
+      mockUsersService.create.mockRejectedValue(
+        new ConflictException('Já existe um usuário com este e-mail'),
+      );
+
+      await expect(service.signUp(signUpDto)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockWishlistsService.ensureDefault).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('signInWithGoogle', () => {
+    const profile = {
+      googleId: 'google-1',
+      email: 'ana@example.com',
+      name: 'Ana Silva',
+      picture: 'https://lh3.googleusercontent.com/a/foto',
+    };
+
+    beforeEach(() => {
+      mockGoogleIdentityService.verify.mockResolvedValue(profile);
+      mockJwtService.sign.mockReturnValue('token.google');
+    });
+
+    it('deve entrar com a conta já vinculada ao Google', async () => {
+      mockUsersService.findByGoogleId.mockResolvedValue(userWithPassword);
+
+      const result = await service.signInWithGoogle({ idToken: 'id-token' });
+
+      expect(mockGoogleIdentityService.verify).toHaveBeenCalledWith('id-token');
+      expect(mockUsersService.create).not.toHaveBeenCalled();
+      expect(result.token).toBe('token.google');
+      expect(result.user._id).toBe('1');
+    });
+
+    it('deve vincular o Google a uma conta existente com o mesmo e-mail', async () => {
+      mockUsersService.findByGoogleId.mockResolvedValue(null);
+      mockUsersService.findByEmail.mockResolvedValue(userWithPassword);
+      mockUsersService.linkGoogleAccount.mockResolvedValue(userWithPassword);
+
+      await service.signInWithGoogle({ idToken: 'id-token' });
+
+      expect(mockUsersService.linkGoogleAccount).toHaveBeenCalledWith(
+        '1',
+        'google-1',
+        profile.picture,
+      );
+      expect(mockUsersService.create).not.toHaveBeenCalled();
+    });
+
+    it('deve criar conta Google com onboarding pendente e lista padrão', async () => {
+      mockUsersService.findByGoogleId.mockResolvedValue(null);
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.create.mockResolvedValue({
+        _id: '3',
+        email: 'ana@example.com',
+        role: 'user',
+        active: true,
+        mustChangePassword: false,
+        onboardingCompleted: false,
+      });
+
+      const result = await service.signInWithGoogle({ idToken: 'id-token' });
+
+      expect(mockUsersService.create).toHaveBeenCalledWith({
+        name: 'Ana Silva',
+        email: 'ana@example.com',
+        avatarUrl: profile.picture,
+        googleId: 'google-1',
+        role: 'user',
+        authProvider: 'google',
+        onboardingCompleted: false,
+      });
+      expect(mockWishlistsService.ensureDefault).toHaveBeenCalledWith('3');
+      expect(result.user.onboardingCompleted).toBe(false);
+    });
+
+    it('deve recusar conta desativada', async () => {
+      mockUsersService.findByGoogleId.mockResolvedValue({
+        ...userWithPassword,
+        active: false,
+      });
+
+      await expect(
+        service.signInWithGoogle({ idToken: 'id-token' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
   describe('getMe', () => {
     it('deve retornar role e mustChangePassword do usuário persistido', async () => {
       mockUsersService.findById.mockResolvedValue({
@@ -215,6 +405,35 @@ describe('AuthService', () => {
       role: 'admin' as const,
       mustChangePassword: false,
     };
+
+    it('deve atualizar dados, favoritos e concluir o onboarding', async () => {
+      mockCategoriesService.existsAllSlugs.mockResolvedValue([]);
+      mockUsersService.update.mockResolvedValue({ _id: '1' });
+
+      await service.updateProfile(jwtPayload, {
+        company: 'Editora X',
+        favoriteCategorySlugs: ['ficcao'],
+        onboardingCompleted: true,
+      });
+
+      expect(mockCategoriesService.existsAllSlugs).toHaveBeenCalledWith([
+        'ficcao',
+      ]);
+      expect(mockUsersService.update).toHaveBeenCalledWith('1', {
+        company: 'Editora X',
+        favoriteCategorySlugs: ['ficcao'],
+        onboardingCompleted: true,
+      });
+    });
+
+    it('deve recusar favoritos com categoria inexistente', async () => {
+      mockCategoriesService.existsAllSlugs.mockResolvedValue(['nada']);
+
+      await expect(
+        service.updateProfile(jwtPayload, { favoriteCategorySlugs: ['nada'] }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUsersService.update).not.toHaveBeenCalled();
+    });
 
     it('deve atualizar apenas o nome do próprio usuário', async () => {
       const updated = {
@@ -384,7 +603,7 @@ describe('AuthService', () => {
       expect(mockMailService.sendPasswordReset).toHaveBeenCalledWith(
         'teste@example.com',
         expect.stringContaining(
-          'https://contracapa.com/admin/redefinir-senha?token=',
+          'https://contracapa.com/redefinir-senha?token=',
         ),
       );
       expect(result.message).toContain('Se este e-mail estiver cadastrado');

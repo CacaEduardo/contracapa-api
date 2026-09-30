@@ -10,10 +10,11 @@ import { envSchema, Env } from './config/env.schema';
 import { AuthModule } from './modules/auth/auth.module';
 import { BooksModule } from './modules/books/books.module';
 import { CategoriesModule } from './modules/categories/categories.module';
-import { NewsletterModule } from './modules/newsletter/newsletter.module';
+import { ExpertsModule } from './modules/experts/experts.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { UsersModule } from './modules/users/users.module';
+import { WishlistsModule } from './modules/wishlists/wishlists.module';
 
 @Module({
   imports: [
@@ -32,8 +33,9 @@ import { UsersModule } from './modules/users/users.module';
     CategoriesModule,
     BooksModule,
     ReviewsModule,
-    NewsletterModule,
+    ExpertsModule,
     StatsModule,
+    WishlistsModule,
   ],
   providers: [
     {

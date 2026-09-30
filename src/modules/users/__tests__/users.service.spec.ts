@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'node:crypto';
@@ -24,6 +28,8 @@ describe('UsersService', () => {
     findById: jest.fn(),
     findByIdAndUpdate: jest.fn(),
     create: jest.fn(),
+    countDocuments: jest.fn(),
+    updateMany: jest.fn(),
   };
 
   const publicDoc = {
@@ -34,6 +40,10 @@ describe('UsersService', () => {
     role: 'user',
     active: true,
     mustChangePassword: false,
+    company: undefined,
+    favoriteCategorySlugs: [],
+    authProvider: 'password',
+    onboardingCompleted: true,
     createdAt: undefined,
     updatedAt: undefined,
   };
@@ -75,6 +85,11 @@ describe('UsersService', () => {
         email: 'ana@example.com',
         avatarUrl: undefined,
         phone: undefined,
+        company: undefined,
+        favoriteCategorySlugs: [],
+        googleId: undefined,
+        authProvider: 'password',
+        onboardingCompleted: true,
         role: 'user',
         active: true,
         mustChangePassword: false,
@@ -88,6 +103,10 @@ describe('UsersService', () => {
         role: 'user',
         active: true,
         mustChangePassword: false,
+        company: undefined,
+        favoriteCategorySlugs: [],
+        authProvider: 'password',
+        onboardingCompleted: true,
         createdAt: undefined,
         updatedAt: undefined,
       });
@@ -165,30 +184,103 @@ describe('UsersService', () => {
   });
 
   describe('findAll', () => {
-    it('deve retornar lista de usuários públicos', async () => {
-      mockUserModel.find.mockReturnValue(execOf([publicDoc]));
+    const chainOf = (value: unknown[]) => {
+      const chain = {
+        sort: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(value),
+      };
+      return chain;
+    };
 
-      const result = await service.findAll();
+    it('deve paginar e ordenar por cadastro mais recente', async () => {
+      const chain = chainOf([publicDoc]);
+      mockUserModel.find.mockReturnValue(chain);
+      mockUserModel.countDocuments.mockReturnValue(execOf(21));
+
+      const result = await service.findAll({ page: 2, pageSize: 20 });
 
       expect(mockUserModel.find).toHaveBeenCalledWith({});
-      expect(result).toHaveLength(1);
-      expect(result[0]).toMatchObject({ _id: '1', email: 'ana@example.com' });
+      expect(chain.sort).toHaveBeenCalledWith({ createdAt: -1 });
+      expect(chain.skip).toHaveBeenCalledWith(20);
+      expect(result).toMatchObject({ total: 21, totalPages: 2, page: 2 });
+      expect(result.items[0]).toMatchObject({ _id: '1' });
     });
 
-    it('deve filtrar por role user', async () => {
-      mockUserModel.find.mockReturnValue(execOf([publicDoc]));
+    it('deve buscar por nome ou e-mail escapando a expressão', async () => {
+      mockUserModel.find.mockReturnValue(chainOf([]));
+      mockUserModel.countDocuments.mockReturnValue(execOf(0));
 
-      await service.findAll({ role: 'user' });
+      await service.findAll({ q: 'a.na', role: 'user', page: 1, pageSize: 20 });
 
-      expect(mockUserModel.find).toHaveBeenCalledWith({ role: 'user' });
+      const [filter] = mockUserModel.find.mock.calls[0] as [
+        { role: string; $or: Array<Record<string, RegExp>> },
+      ];
+      expect(filter.role).toBe('user');
+      expect(filter.$or[0].name.source).toBe('a\\.na');
+      expect(filter.$or[1].email.flags).toContain('i');
+    });
+  });
+
+  describe('updateByAdmin', () => {
+    it('não deve permitir desativar a própria conta', async () => {
+      await expect(
+        service.updateByAdmin('1', '1', { active: false }),
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it('deve filtrar por active true', async () => {
-      mockUserModel.find.mockReturnValue(execOf([publicDoc]));
+    it('não deve permitir remover o próprio acesso de admin', async () => {
+      await expect(
+        service.updateByAdmin('1', '1', { role: 'user' }),
+      ).rejects.toThrow(BadRequestException);
+    });
 
-      await service.findAll({ active: true });
+    it('não deve rebaixar o último admin ativo', async () => {
+      mockUserModel.findById.mockReturnValue(
+        execOf({ ...publicDoc, role: 'admin', active: true }),
+      );
+      mockUserModel.countDocuments.mockReturnValue(execOf(1));
 
-      expect(mockUserModel.find).toHaveBeenCalledWith({ active: true });
+      await expect(
+        service.updateByAdmin('admin-1', '2', { role: 'user' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('deve promover um leitor a admin', async () => {
+      mockUserModel.findByIdAndUpdate.mockReturnValue(
+        execOf({ ...publicDoc, role: 'admin' }),
+      );
+
+      const result = await service.updateByAdmin('admin-1', '1', {
+        role: 'admin',
+      });
+
+      expect(result.role).toBe('admin');
+    });
+  });
+
+  describe('countReaders', () => {
+    it('deve contar apenas usuários leitores', async () => {
+      mockUserModel.countDocuments.mockReturnValue(execOf(7));
+
+      await expect(service.countReaders()).resolves.toBe(7);
+      expect(mockUserModel.countDocuments).toHaveBeenCalledWith({
+        role: 'user',
+      });
+    });
+  });
+
+  describe('pullFavoriteCategory', () => {
+    it('deve remover a categoria dos favoritos de todos os usuários', async () => {
+      mockUserModel.updateMany.mockReturnValue(execOf({}));
+
+      await service.pullFavoriteCategory('ficcao');
+
+      expect(mockUserModel.updateMany).toHaveBeenCalledWith(
+        { favoriteCategorySlugs: 'ficcao' },
+        { $pull: { favoriteCategorySlugs: 'ficcao' } },
+      );
     });
   });
 

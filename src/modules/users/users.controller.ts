@@ -10,7 +10,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { mongoIdSchema } from 'src/common/dto/mongo-id.dto';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import type { JwtPayload } from 'src/common/types/jwt-payload';
 import {
   createUserSchema,
   type CreateUserDto,
@@ -48,10 +50,11 @@ export class UsersController {
 
   @Patch(':id')
   update(
+    @CurrentUser() actor: JwtPayload,
     @Param('id', { schema: mongoIdSchema }) id: string,
     @Body({ schema: updateUserSchema }) body: UpdateUserDto,
   ) {
-    return this.usersService.update(id, body);
+    return this.usersService.updateByAdmin(actor.sub, id, body);
   }
 
   @Post(':id/reset-password')

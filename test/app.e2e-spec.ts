@@ -13,6 +13,10 @@ describe('Auth (e2e)', () => {
       user: { _id: '1', name: 'Ana', email: 'ana@example.com' },
       token: 'token.jwt',
     }),
+    signUp: jest.fn().mockResolvedValue({
+      user: { _id: '2', name: 'Ana Silva', email: 'ana@example.com' },
+      token: 'token.jwt',
+    }),
     getMe: jest.fn(),
   };
 
@@ -46,6 +50,31 @@ describe('Auth (e2e)', () => {
     await request(app.getHttpServer())
       .post('/auth/signin')
       .send({ email: 'nao-e-email' })
+      .expect(400);
+  });
+
+  it('POST /auth/signup normaliza o e-mail e cria a conta', async () => {
+    await request(app.getHttpServer())
+      .post('/auth/signup')
+      .send({
+        name: 'Ana Silva',
+        email: ' Ana@Example.com ',
+        password: 'senha1234',
+      })
+      .expect(201);
+
+    expect(mockAuthService.signUp).toHaveBeenCalledWith({
+      name: 'Ana Silva',
+      email: 'ana@example.com',
+      password: 'senha1234',
+      favoriteCategorySlugs: [],
+    });
+  });
+
+  it('POST /auth/signup rejeita senha curta', async () => {
+    await request(app.getHttpServer())
+      .post('/auth/signup')
+      .send({ name: 'Ana Silva', email: 'ana@example.com', password: '123' })
       .expect(400);
   });
 });

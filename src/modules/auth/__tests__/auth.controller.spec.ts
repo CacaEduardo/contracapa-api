@@ -9,6 +9,8 @@ describe('AuthController', () => {
 
   const mockAuthService = {
     signIn: jest.fn(),
+    signUp: jest.fn(),
+    signInWithGoogle: jest.fn(),
     getMe: jest.fn(),
     updateProfile: jest.fn(),
     changePassword: jest.fn(),
@@ -24,6 +26,36 @@ describe('AuthController', () => {
 
     controller = module.get(AuthController);
     jest.clearAllMocks();
+  });
+
+  describe('signUp', () => {
+    it('deve repassar o cadastro ao service', async () => {
+      const dto = {
+        name: 'Ana Silva',
+        email: 'ana@example.com',
+        password: 'senha1234',
+        favoriteCategorySlugs: [],
+      };
+      const response = { user: { _id: '2' }, token: 'token' };
+      mockAuthService.signUp.mockResolvedValue(response);
+
+      await expect(controller.signUp(dto)).resolves.toEqual(response);
+      expect(mockAuthService.signUp).toHaveBeenCalledWith(dto);
+    });
+  });
+
+  describe('signInWithGoogle', () => {
+    it('deve repassar o id token ao service', async () => {
+      const response = { user: { _id: '3' }, token: 'token' };
+      mockAuthService.signInWithGoogle.mockResolvedValue(response);
+
+      await expect(
+        controller.signInWithGoogle({ idToken: 'id-token' }),
+      ).resolves.toEqual(response);
+      expect(mockAuthService.signInWithGoogle).toHaveBeenCalledWith({
+        idToken: 'id-token',
+      });
+    });
   });
 
   describe('signIn', () => {

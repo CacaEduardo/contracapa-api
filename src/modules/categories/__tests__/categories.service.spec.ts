@@ -3,6 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { CategoriesService } from 'src/modules/categories/categories.service';
 import { Category } from 'src/modules/categories/schemas/category.schema';
+import { UsersService } from 'src/modules/users/users.service';
 
 describe('CategoriesService', () => {
   let service: CategoriesService;
@@ -16,6 +17,10 @@ describe('CategoriesService', () => {
     updateOne: jest.fn(),
     countDocuments: jest.fn(),
     create: jest.fn(),
+  };
+
+  const mockUsersService = {
+    pullFavoriteCategory: jest.fn(),
   };
 
   const category = {
@@ -34,6 +39,7 @@ describe('CategoriesService', () => {
       providers: [
         CategoriesService,
         { provide: getModelToken(Category.name), useValue: mockCategoryModel },
+        { provide: UsersService, useValue: mockUsersService },
       ],
     }).compile();
 
@@ -140,10 +146,13 @@ describe('CategoriesService', () => {
       await expect(service.remove('1')).rejects.toThrow(NotFoundException);
     });
 
-    it('deve remover a categoria existente', async () => {
+    it('deve remover a categoria existente e tirá-la dos favoritos', async () => {
       mockCategoryModel.findByIdAndDelete.mockReturnValue(execOf(category));
 
       await expect(service.remove('1')).resolves.toBeUndefined();
+      expect(mockUsersService.pullFavoriteCategory).toHaveBeenCalledWith(
+        'ficcao',
+      );
     });
   });
 

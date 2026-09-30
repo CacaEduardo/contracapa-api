@@ -18,7 +18,7 @@ describe('StatsController', () => {
   });
 
   it('deve devolver as estatísticas via service', async () => {
-    const stats = { books: 8, categories: 5, reviews: 6, subscribers: 3 };
+    const stats = { books: 8, categories: 5, reviews: 6, readers: 3 };
     mockStatsService.getStats.mockResolvedValue(stats);
 
     await expect(controller.getStats()).resolves.toEqual(stats);

@@ -44,7 +44,10 @@ src/
 - Código só sobe para `common/` quando um segundo módulo precisa. Filter que conhece um domínio sai de `common/`.
 - Env: `ConfigModule.forRoot({ isGlobal: true, validationSchema })`. Leia só via `ConfigService` — nunca `process.env` solto (exceto `PORT` no bootstrap, depois da validação).
 - Mongoose e JWT com `forRootAsync` / `registerAsync` + `ConfigService`. `JwtModule` é `global: true`.
-- `JwtAuthGuard` é `APP_GUARD`. Públicas com `@Public()`: `POST /auth/signin`. Usuário via `@CurrentUser()`. Sem middleware Express para JWT.
+- `JwtAuthGuard` é `APP_GUARD`. Públicas com `@Public()`: `POST /auth/signin`, `/auth/signup`, `/auth/google`, `/auth/forgot-password`, `/auth/reset-password` e as leituras do catálogo. Usuário via `@CurrentUser()`. Sem middleware Express para JWT.
+- Login com Google: `GoogleIdentityService` valida o `id_token` com `GOOGLE_CLIENT_ID`; conta existente com o mesmo e-mail é vinculada.
+- Recursos do leitor (ex.: `wishlists`) são sempre filtrados pelo dono (`@CurrentUser().sub`); recurso de outra pessoa responde 404.
+- `BooksModule` ↔ `WishlistsModule` usam `forwardRef` (livro excluído sai das listas; listas resolvem livros).
 - Papéis: `admin` | `user`. Rotas administrativas usam `@Roles('admin')`.
 
 ## Padrões de código

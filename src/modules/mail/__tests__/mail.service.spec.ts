@@ -24,26 +24,10 @@ describe('MailService', () => {
     jest.clearAllMocks();
   });
 
-  it('deve enviar e-mail de confirmação de newsletter com o link informado', async () => {
-    await service.sendNewsletterConfirmation(
-      'leitor@example.com',
-      'Ana',
-      'https://contracapa.com/newsletter/confirmar?token=abc',
-    );
-
-    const call = mockProvider.send.mock.calls[0][0];
-
-    expect(call.to).toBe('leitor@example.com');
-    expect(call.subject).toContain('newsletter');
-    expect(call.html).toContain(
-      'https://contracapa.com/newsletter/confirmar?token=abc',
-    );
-  });
-
   it('deve enviar e-mail de redefinição de senha com o link informado', async () => {
     await service.sendPasswordReset(
       'admin@example.com',
-      'https://contracapa.com/admin/redefinir-senha?token=xyz',
+      'https://contracapa.com/redefinir-senha?token=xyz',
     );
 
     const call = mockProvider.send.mock.calls[0][0];
@@ -51,7 +35,7 @@ describe('MailService', () => {
     expect(call.to).toBe('admin@example.com');
     expect(call.subject).toContain('senha');
     expect(call.html).toContain(
-      'https://contracapa.com/admin/redefinir-senha?token=xyz',
+      'https://contracapa.com/redefinir-senha?token=xyz',
     );
   });
 });

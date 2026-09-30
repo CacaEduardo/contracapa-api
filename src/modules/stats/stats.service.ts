@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { BooksService } from 'src/modules/books/books.service';
 import { CategoriesService } from 'src/modules/categories/categories.service';
-import { NewsletterService } from 'src/modules/newsletter/newsletter.service';
 import { ReviewsService } from 'src/modules/reviews/reviews.service';
+import { UsersService } from 'src/modules/users/users.service';
 
 export type StatsResponse = {
   books: number;
   categories: number;
   reviews: number;
-  subscribers: number;
+  readers: number;
 };
 
 @Injectable()
@@ -17,17 +17,17 @@ export class StatsService {
     private readonly booksService: BooksService,
     private readonly categoriesService: CategoriesService,
     private readonly reviewsService: ReviewsService,
-    private readonly newsletterService: NewsletterService,
+    private readonly usersService: UsersService,
   ) {}
 
   async getStats(): Promise<StatsResponse> {
-    const [books, categories, reviews, subscribers] = await Promise.all([
+    const [books, categories, reviews, readers] = await Promise.all([
       this.booksService.count(),
       this.categoriesService.count(),
       this.reviewsService.count(),
-      this.newsletterService.count(),
+      this.usersService.countReaders(),
     ]);
 
-    return { books, categories, reviews, subscribers };
+    return { books, categories, reviews, readers };
   }
 }

@@ -9,7 +9,7 @@ describe('UsersController', () => {
     create: jest.fn(),
     findAll: jest.fn(),
     findOne: jest.fn(),
-    update: jest.fn(),
+    updateByAdmin: jest.fn(),
     resetPassword: jest.fn(),
   };
 
@@ -44,17 +44,48 @@ describe('UsersController', () => {
     expect(mockUsersService.create).toHaveBeenCalledWith(dto);
   });
 
-  it('deve listar usuários com filtros via service', async () => {
-    const users = [{ _id: '1', name: 'Ana', role: 'user', active: true }];
-    mockUsersService.findAll.mockResolvedValue(users);
+  it('deve listar usuários com filtros e paginação via service', async () => {
+    const result = {
+      items: [{ _id: '1', name: 'Ana', role: 'user', active: true }],
+      total: 1,
+      totalPages: 1,
+      page: 1,
+      pageSize: 20,
+    };
+    mockUsersService.findAll.mockResolvedValue(result);
+    const query = {
+      role: 'user' as const,
+      active: true,
+      q: 'ana',
+      page: 1,
+      pageSize: 20,
+    };
+
+    await expect(controller.findAll(query)).resolves.toEqual(result);
+    expect(mockUsersService.findAll).toHaveBeenCalledWith(query);
+  });
+
+  it('deve atualizar como admin repassando o id de quem age', async () => {
+    const updated = { _id: '507f1f77bcf86cd799439011', active: false };
+    mockUsersService.updateByAdmin.mockResolvedValue(updated);
 
     await expect(
-      controller.findAll({ role: 'user', active: true }),
-    ).resolves.toEqual(users);
-    expect(mockUsersService.findAll).toHaveBeenCalledWith({
-      role: 'user',
-      active: true,
-    });
+      controller.update(
+        {
+          sub: 'admin-1',
+          email: 'admin@example.com',
+          role: 'admin',
+          mustChangePassword: false,
+        },
+        '507f1f77bcf86cd799439011',
+        { active: false },
+      ),
+    ).resolves.toEqual(updated);
+    expect(mockUsersService.updateByAdmin).toHaveBeenCalledWith(
+      'admin-1',
+      '507f1f77bcf86cd799439011',
+      { active: false },
+    );
   });
 
   it('deve buscar um usuário por id', async () => {

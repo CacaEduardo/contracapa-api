@@ -1,4 +1,9 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -7,15 +12,27 @@ import { Env } from 'src/config/env.schema';
 import type { JwtPayload } from 'src/common/types/jwt-payload';
 import type { ChangePasswordDto } from 'src/modules/auth/dto/change-password.dto';
 import type { ForgotPasswordDto } from 'src/modules/auth/dto/forgot-password.dto';
+import type { GoogleSignInDto } from 'src/modules/auth/dto/google-signin.dto';
 import type { ResetPasswordDto } from 'src/modules/auth/dto/reset-password.dto';
 import type { SignInDto } from 'src/modules/auth/dto/signin.dto';
+import type { SignUpDto } from 'src/modules/auth/dto/signup.dto';
 import type { UpdateProfileDto } from 'src/modules/auth/dto/update-profile.dto';
+import {
+  GoogleIdentityService,
+  type GoogleProfile,
+} from 'src/modules/auth/google-identity.service';
+import { CategoriesService } from 'src/modules/categories/categories.service';
 import { MailService } from 'src/modules/mail/mail.service';
 import { toPublicUser, type PublicUser } from 'src/modules/users/user-response';
 import { UsersService } from 'src/modules/users/users.service';
+import { WishlistsService } from 'src/modules/wishlists/wishlists.service';
 
 const INVALID_CREDENTIALS_MESSAGE = 'Credenciais incorretas';
+const GOOGLE_ONLY_ACCOUNT_MESSAGE = 'Esta conta usa login com Google';
+const INACTIVE_ACCOUNT_MESSAGE = 'Conta desativada';
 const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+type AuthResult = { user: PublicUser; token: string };
+
 const GENERIC_FORGOT_PASSWORD_MESSAGE =
   'Se este e-mail estiver cadastrado, enviamos um link de redefinição de senha';
 
@@ -27,14 +44,25 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
+    private readonly categoriesService: CategoriesService,
+    private readonly wishlistsService: WishlistsService,
+    private readonly googleIdentityService: GoogleIdentityService,
     private readonly config: ConfigService<Env, true>,
   ) {}
 
-  async signIn(data: SignInDto): Promise<{ user: PublicUser; token: string }> {
+  async signIn(data: SignInDto): Promise<AuthResult> {
     const user = await this.usersService.findByEmailWithPassword(data.email);
 
-    if (!user || !user.password || !user.active) {
+    if (!user || !user.active) {
       throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
+    }
+
+    if (!user.password) {
+      throw new UnauthorizedException(
+        user.authProvider === 'google'
+          ? GOOGLE_ONLY_ACCOUNT_MESSAGE
+          : INVALID_CREDENTIALS_MESSAGE,
+      );
     }
 
     const isValidPassword = await bcrypt.compare(data.password, user.password);
@@ -43,17 +71,38 @@ export class AuthService {
       throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
     }
 
-    const payload: JwtPayload = {
-      sub: user._id.toString(),
-      email: user.email,
-      role: user.role,
-      mustChangePassword: user.mustChangePassword,
-    };
+    return this.issue(toPublicUser(user));
+  }
 
-    return {
-      user: toPublicUser(user),
-      token: this.jwtService.sign(payload),
-    };
+  async signUp(data: SignUpDto): Promise<AuthResult> {
+    await this.assertCategoriesExist(data.favoriteCategorySlugs);
+
+    const user = await this.usersService.create({
+      name: data.name,
+      email: data.email,
+      password: data.password,
+      company: data.company || undefined,
+      favoriteCategorySlugs: data.favoriteCategorySlugs,
+      role: 'user',
+      authProvider: 'password',
+      onboardingCompleted: true,
+    });
+
+    await this.wishlistsService.ensureDefault(user._id);
+    this.logger.log(`Cadastro de leitor: userId=${user._id}`);
+
+    return this.issue(user);
+  }
+
+  async signInWithGoogle(data: GoogleSignInDto): Promise<AuthResult> {
+    const profile = await this.googleIdentityService.verify(data.idToken);
+    const user = await this.findOrCreateGoogleUser(profile);
+
+    if (!user.active) {
+      throw new UnauthorizedException(INACTIVE_ACCOUNT_MESSAGE);
+    }
+
+    return this.issue(user);
   }
 
   async getMe(payload: JwtPayload): Promise<PublicUser> {
@@ -70,8 +119,17 @@ export class AuthService {
     payload: JwtPayload,
     data: UpdateProfileDto,
   ): Promise<PublicUser> {
+    if (data.favoriteCategorySlugs) {
+      await this.assertCategoriesExist(data.favoriteCategorySlugs);
+    }
+
     const user = await this.usersService.update(payload.sub, {
-      name: data.name,
+      ...(data.name !== undefined && { name: data.name }),
+      ...(data.company !== undefined && { company: data.company }),
+      ...(data.favoriteCategorySlugs !== undefined && {
+        favoriteCategorySlugs: data.favoriteCategorySlugs,
+      }),
+      ...(data.onboardingCompleted && { onboardingCompleted: true }),
     });
 
     this.logger.log(`Perfil atualizado: userId=${payload.sub}`);
@@ -82,7 +140,7 @@ export class AuthService {
   async changePassword(
     payload: JwtPayload,
     data: ChangePasswordDto,
-  ): Promise<{ user: PublicUser; token: string }> {
+  ): Promise<AuthResult> {
     const user = await this.usersService.findByIdWithPassword(payload.sub);
 
     if (!user?.password) {
@@ -103,19 +161,9 @@ export class AuthService {
       data.newPassword,
     );
 
-    const newPayload: JwtPayload = {
-      sub: publicUser._id,
-      email: publicUser.email,
-      role: publicUser.role,
-      mustChangePassword: false,
-    };
-
     this.logger.log(`Senha alterada: userId=${payload.sub}`);
 
-    return {
-      user: publicUser,
-      token: this.jwtService.sign(newPayload),
-    };
+    return this.issue(publicUser);
   }
 
   async forgotPassword(data: ForgotPasswordDto): Promise<{ message: string }> {
@@ -131,7 +179,7 @@ export class AuthService {
         expiresAt,
       );
 
-      const resetUrl = `${this.config.get('FRONTEND_URL', { infer: true })}/admin/redefinir-senha?token=${token}`;
+      const resetUrl = `${this.config.get('FRONTEND_URL', { infer: true })}/redefinir-senha?token=${token}`;
 
       try {
         await this.mailService.sendPasswordReset(user.email, resetUrl);
@@ -164,6 +212,63 @@ export class AuthService {
     );
 
     return { user: publicUser };
+  }
+
+  private async findOrCreateGoogleUser(
+    profile: GoogleProfile,
+  ): Promise<PublicUser> {
+    const linked = await this.usersService.findByGoogleId(profile.googleId);
+
+    if (linked) {
+      return toPublicUser(linked);
+    }
+
+    const existing = await this.usersService.findByEmail(profile.email);
+
+    if (existing) {
+      const updated = await this.usersService.linkGoogleAccount(
+        existing._id.toString(),
+        profile.googleId,
+        profile.picture,
+      );
+      return toPublicUser(updated);
+    }
+
+    const created = await this.usersService.create({
+      name: profile.name,
+      email: profile.email,
+      avatarUrl: profile.picture,
+      googleId: profile.googleId,
+      role: 'user',
+      authProvider: 'google',
+      onboardingCompleted: false,
+    });
+
+    await this.wishlistsService.ensureDefault(created._id);
+    this.logger.log(`Cadastro via Google: userId=${created._id}`);
+
+    return created;
+  }
+
+  private async assertCategoriesExist(slugs: string[]): Promise<void> {
+    const unknown = await this.categoriesService.existsAllSlugs(slugs);
+
+    if (unknown.length > 0) {
+      throw new BadRequestException(
+        `Categoria(s) inexistente(s): ${unknown.join(', ')}`,
+      );
+    }
+  }
+
+  private issue(user: PublicUser): AuthResult {
+    const payload: JwtPayload = {
+      sub: user._id,
+      email: user.email,
+      role: user.role,
+      mustChangePassword: user.mustChangePassword,
+    };
+
+    return { user, token: this.jwtService.sign(payload) };
   }
 
   private hashToken(token: string): string {

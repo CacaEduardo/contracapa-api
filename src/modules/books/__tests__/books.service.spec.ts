@@ -9,6 +9,7 @@ import { BooksService } from 'src/modules/books/books.service';
 import { Book } from 'src/modules/books/schemas/book.schema';
 import { CategoriesService } from 'src/modules/categories/categories.service';
 import { StorageService } from 'src/modules/storage/storage.service';
+import { WishlistsService } from 'src/modules/wishlists/wishlists.service';
 
 function execOf<T>(value: T) {
   return { exec: jest.fn().mockResolvedValue(value) };
@@ -40,6 +41,10 @@ describe('BooksService', () => {
     deleteImage: jest.fn(),
   };
 
+  const mockWishlistsService = {
+    pullBook: jest.fn(),
+  };
+
   const book = {
     _id: { toString: () => 'book-1' },
     title: 'O Nome da Rosa',
@@ -66,6 +71,7 @@ describe('BooksService', () => {
         { provide: getModelToken(Book.name), useValue: mockBookModel },
         { provide: CategoriesService, useValue: mockCategoriesService },
         { provide: StorageService, useValue: mockStorageService },
+        { provide: WishlistsService, useValue: mockWishlistsService },
       ],
     }).compile();
 
@@ -345,7 +351,7 @@ describe('BooksService', () => {
       expect(mockBookModel.findByIdAndDelete).not.toHaveBeenCalled();
     });
 
-    it('deve remover o livro, decrementar categorias e apagar a capa do S3', async () => {
+    it('deve remover o livro, decrementar categorias, tirar das listas e apagar a capa do S3', async () => {
       mockBookModel.findById.mockReturnValue(
         execOf({ ...book, coverKey: 'books/capa.jpg' }),
       );
@@ -356,9 +362,34 @@ describe('BooksService', () => {
       expect(mockCategoriesService.decrementBookCount).toHaveBeenCalledWith(
         'ficcao',
       );
+      expect(mockWishlistsService.pullBook).toHaveBeenCalledWith('book-1');
       expect(mockStorageService.deleteImage).toHaveBeenCalledWith(
         'books/capa.jpg',
       );
+    });
+  });
+
+  describe('findByIds', () => {
+    it('deve ignorar ids inválidos sem consultar o banco', async () => {
+      await expect(service.findByIds(['nao-e-id'])).resolves.toEqual([]);
+      expect(mockBookModel.find).not.toHaveBeenCalled();
+    });
+
+    it('deve buscar os livros pelos ids válidos', async () => {
+      mockBookModel.find.mockReturnValue(execOf([book]));
+
+      const result = await service.findByIds([
+        '507f1f77bcf86cd799439011',
+        'invalido',
+      ]);
+
+      expect(mockBookModel.find).toHaveBeenCalledWith({
+        _id: { $in: ['507f1f77bcf86cd799439011'] },
+      });
+      expect(result[0]).toMatchObject({
+        _id: 'book-1',
+        slug: 'o-nome-da-rosa',
+      });
     });
   });
 
