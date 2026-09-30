@@ -56,10 +56,12 @@ describe('BooksService', () => {
     coverKey: null,
     amazonUrl: null,
     categorySlugs: ['ficcao'],
-    reviewId: null,
-    reviewVerdict: null,
-    reviewWeekly: false,
-    reviewPublishedAt: null,
+    description: null,
+    active: true,
+    editorias: [],
+    expertSlugs: [],
+    recommendationCount: 0,
+    disrecommendationCount: 0,
     createdAt: undefined,
     updatedAt: undefined,
   };
@@ -157,17 +159,23 @@ describe('BooksService', () => {
   });
 
   describe('findAll', () => {
-    it('deve filtrar por busca textual, categorias e vereditos, paginando o resultado', async () => {
-      const limitMock = jest.fn().mockReturnValue(execOf([book]));
+    const mockListQuery = (items: unknown[], total: number) => {
+      const limitMock = jest.fn().mockReturnValue(execOf(items));
       const skipMock = jest.fn().mockReturnValue({ limit: limitMock });
       const sortMock = jest.fn().mockReturnValue({ skip: skipMock });
       mockBookModel.find.mockReturnValue({ sort: sortMock });
-      mockBookModel.countDocuments.mockReturnValue(execOf(1));
+      mockBookModel.countDocuments.mockReturnValue(execOf(total));
+      return { sortMock, skipMock, limitMock };
+    };
+
+    it('deve filtrar por busca, categorias, editorias e especialistas, só entre livros ativos', async () => {
+      const { sortMock, skipMock, limitMock } = mockListQuery([book], 1);
 
       const result = await service.findAll({
         q: 'rosa',
         categories: ['ficcao'],
-        verdicts: ['positive'],
+        editorias: ['market', 'do_not_read'],
+        experts: ['ana-lima'],
         sort: 'az',
         page: 1,
         pageSize: 12,
@@ -175,8 +183,10 @@ describe('BooksService', () => {
 
       expect(mockBookModel.find).toHaveBeenCalledWith(
         expect.objectContaining({
+          active: true,
           categorySlugs: { $in: ['ficcao'] },
-          reviewVerdict: { $in: ['positive'] },
+          editorias: { $in: ['market', 'do_not_read'] },
+          expertSlugs: { $in: ['ana-lima'] },
         }),
       );
       expect(sortMock).toHaveBeenCalledWith({ title: 1 });
@@ -191,76 +201,66 @@ describe('BooksService', () => {
       });
     });
 
-    it('deve filtrar livros sem resenha quando o veredito "none" for selecionado', async () => {
-      const limitMock = jest.fn().mockReturnValue(execOf([]));
-      const skipMock = jest.fn().mockReturnValue({ limit: limitMock });
-      const sortMock = jest.fn().mockReturnValue({ skip: skipMock });
-      mockBookModel.find.mockReturnValue({ sort: sortMock });
-      mockBookModel.countDocuments.mockReturnValue(execOf(0));
-
-      await service.findAll({
-        verdicts: ['none'],
-        sort: 'recentes',
-        page: 1,
-        pageSize: 12,
-      });
-
-      expect(mockBookModel.find).toHaveBeenCalledWith(
-        expect.objectContaining({ reviewVerdict: null }),
-      );
-    });
-
-    it('deve combinar veredito concreto e "none" num $or dentro de $and', async () => {
-      const limitMock = jest.fn().mockReturnValue(execOf([]));
-      const skipMock = jest.fn().mockReturnValue({ limit: limitMock });
-      const sortMock = jest.fn().mockReturnValue({ skip: skipMock });
-      mockBookModel.find.mockReturnValue({ sort: sortMock });
-      mockBookModel.countDocuments.mockReturnValue(execOf(0));
-
-      await service.findAll({
-        verdicts: ['positive', 'none'],
-        sort: 'recentes',
-        page: 1,
-        pageSize: 12,
-      });
-
-      const [filter] = mockBookModel.find.mock.calls[0] as [
-        { $and: Array<{ $or: unknown[] }> },
-      ];
-
-      expect(filter.$and).toEqual([
-        {
-          $or: [
-            { reviewVerdict: { $in: ['positive'] } },
-            { reviewVerdict: null },
-          ],
-        },
-      ]);
-    });
-
-    it('deve ordenar por data de publicação da resenha quando sort=recentes', async () => {
-      const limitMock = jest.fn().mockReturnValue(execOf([]));
-      const skipMock = jest.fn().mockReturnValue({ limit: limitMock });
-      const sortMock = jest.fn().mockReturnValue({ skip: skipMock });
-      mockBookModel.find.mockReturnValue({ sort: sortMock });
-      mockBookModel.countDocuments.mockReturnValue(execOf(0));
+    it('deve ordenar pelos mais recentes cadastrados quando sort=recentes', async () => {
+      const { sortMock } = mockListQuery([], 0);
 
       await service.findAll({ sort: 'recentes', page: 1, pageSize: 12 });
 
-      expect(sortMock).toHaveBeenCalledWith({
-        reviewPublishedAt: -1,
-        createdAt: -1,
+      expect(sortMock).toHaveBeenCalledWith({ createdAt: -1 });
+    });
+
+    it('findAllAdmin deve incluir inativos quando status=all', async () => {
+      mockListQuery([], 0);
+
+      await service.findAllAdmin({
+        status: 'all',
+        sort: 'az',
+        page: 1,
+        pageSize: 200,
       });
+
+      const [filter] = mockBookModel.find.mock.calls[0] as [
+        Record<string, unknown>,
+      ];
+      expect(filter).not.toHaveProperty('active');
+    });
+
+    it('findAllAdmin deve filtrar só inativos quando status=inactive', async () => {
+      mockListQuery([], 0);
+
+      await service.findAllAdmin({
+        status: 'inactive',
+        sort: 'az',
+        page: 1,
+        pageSize: 12,
+      });
+
+      expect(mockBookModel.find).toHaveBeenCalledWith({ active: false });
     });
   });
 
   describe('findBySlug', () => {
-    it('deve lançar NotFoundException se o livro não existir', async () => {
+    it('deve lançar NotFoundException se o livro não existir ou estiver inativo', async () => {
       mockBookModel.findOne.mockReturnValue(execOf(null));
 
       await expect(service.findBySlug('inexistente')).rejects.toThrow(
         NotFoundException,
       );
+      expect(mockBookModel.findOne).toHaveBeenCalledWith({
+        slug: 'inexistente',
+        active: true,
+      });
+    });
+
+    it('findBySlugAdmin deve encontrar livro inativo', async () => {
+      mockBookModel.findOne.mockReturnValue(execOf({ ...book, active: false }));
+
+      const result = await service.findBySlugAdmin('o-nome-da-rosa');
+
+      expect(mockBookModel.findOne).toHaveBeenCalledWith({
+        slug: 'o-nome-da-rosa',
+      });
+      expect(result.active).toBe(false);
     });
 
     it('deve retornar o livro com as categorias resolvidas', async () => {
@@ -299,6 +299,7 @@ describe('BooksService', () => {
 
       expect(mockBookModel.find).toHaveBeenCalledWith({
         slug: { $ne: 'o-nome-da-rosa' },
+        active: true,
         categorySlugs: { $in: ['ficcao'] },
       });
       expect(limitMock).toHaveBeenCalledWith(4);
@@ -332,6 +333,51 @@ describe('BooksService', () => {
       );
     });
 
+    it('deve tirar o livro da contagem das categorias ao inativá-lo', async () => {
+      mockBookModel.findById.mockReturnValue(execOf(book));
+      mockBookModel.findByIdAndUpdate.mockReturnValue(
+        execOf({ ...book, active: false }),
+      );
+
+      const result = await service.update('book-1', { active: false });
+
+      expect(mockBookModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        'book-1',
+        { active: false },
+        { new: true },
+      );
+      expect(mockCategoriesService.decrementBookCount).toHaveBeenCalledWith(
+        'ficcao',
+      );
+      expect(result.active).toBe(false);
+    });
+
+    it('deve devolver o livro à contagem das categorias ao reativá-lo', async () => {
+      mockBookModel.findById.mockReturnValue(
+        execOf({ ...book, active: false }),
+      );
+      mockBookModel.findByIdAndUpdate.mockReturnValue(execOf(book));
+
+      await service.update('book-1', { active: true });
+
+      expect(mockCategoriesService.incrementBookCount).toHaveBeenCalledWith(
+        'ficcao',
+      );
+    });
+
+    it('deve gravar a descrição', async () => {
+      mockBookModel.findById.mockReturnValue(execOf(book));
+      mockBookModel.findByIdAndUpdate.mockReturnValue(
+        execOf({ ...book, description: 'Um mistério medieval.' }),
+      );
+
+      const result = await service.update('book-1', {
+        description: 'Um mistério medieval.',
+      });
+
+      expect(result.description).toBe('Um mistério medieval.');
+    });
+
     it('deve lançar NotFoundException se o livro não existir', async () => {
       mockBookModel.findById.mockReturnValue(execOf(null));
 
@@ -342,14 +388,22 @@ describe('BooksService', () => {
   });
 
   describe('remove', () => {
-    it('deve lançar ConflictException se houver resenha vinculada', async () => {
-      mockBookModel.findById.mockReturnValue(
-        execOf({ ...book, reviewId: 'review-1' }),
-      );
+    it.each([
+      ['recomendado', { recommendationCount: 1 }],
+      ['desrecomendado', { disrecommendationCount: 1 }],
+    ])(
+      'deve bloquear a exclusão e sugerir inativar quando o livro for %s em resenhas',
+      async (_, counts) => {
+        mockBookModel.findById.mockReturnValue(execOf({ ...book, ...counts }));
 
-      await expect(service.remove('book-1')).rejects.toThrow(ConflictException);
-      expect(mockBookModel.findByIdAndDelete).not.toHaveBeenCalled();
-    });
+        await expect(service.remove('book-1')).rejects.toThrow(
+          new ConflictException(
+            'Este livro está indicado em resenhas. Inative-o para tirá-lo do catálogo.',
+          ),
+        );
+        expect(mockBookModel.findByIdAndDelete).not.toHaveBeenCalled();
+      },
+    );
 
     it('deve remover o livro, decrementar categorias, tirar das listas e apagar a capa do S3', async () => {
       mockBookModel.findById.mockReturnValue(
@@ -442,59 +496,33 @@ describe('BooksService', () => {
     });
   });
 
-  describe('setReviewSnapshot / clearReviewSnapshot / setWeeklyFlag', () => {
+  describe('setIndicationSnapshot', () => {
+    const snapshot = {
+      editorias: ['market' as const],
+      expertSlugs: ['ana-lima'],
+      recommendationCount: 1,
+      disrecommendationCount: 0,
+    };
+
+    it('deve gravar o snapshot de indicações no livro', async () => {
+      mockBookModel.findByIdAndUpdate.mockReturnValue(execOf(book));
+
+      await service.setIndicationSnapshot('book-1', snapshot);
+
+      expect(mockBookModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        'book-1',
+        snapshot,
+      );
+    });
+
     it('não deve lançar quando a sincronização falhar', async () => {
       mockBookModel.findByIdAndUpdate.mockReturnValue({
         exec: jest.fn().mockRejectedValue(new Error('falha de rede')),
       });
 
       await expect(
-        service.setReviewSnapshot('book-1', {
-          reviewId: 'review-1',
-          verdict: 'positive',
-          weekly: true,
-          publishedAt: new Date(),
-        }),
+        service.setIndicationSnapshot('book-1', snapshot),
       ).resolves.toBeUndefined();
-      await expect(
-        service.clearReviewSnapshot('book-1'),
-      ).resolves.toBeUndefined();
-      await expect(
-        service.setWeeklyFlag('book-1', false),
-      ).resolves.toBeUndefined();
-    });
-
-    it('deve gravar o snapshot da resenha no livro', async () => {
-      mockBookModel.findByIdAndUpdate.mockReturnValue(execOf(book));
-
-      const publishedAt = new Date('2024-01-01');
-      await service.setReviewSnapshot('book-1', {
-        reviewId: 'review-1',
-        verdict: 'positive',
-        weekly: true,
-        publishedAt,
-      });
-
-      expect(mockBookModel.findByIdAndUpdate).toHaveBeenCalledWith('book-1', {
-        reviewId: 'review-1',
-        reviewVerdict: 'positive',
-        reviewWeekly: true,
-        reviewPublishedAt: publishedAt,
-      });
-    });
-  });
-
-  describe('findByIdResponse', () => {
-    it('deve devolver o livro enriquecido pelo id', async () => {
-      mockBookModel.findById.mockReturnValue(execOf(book));
-      mockCategoriesService.findBySlugs.mockResolvedValue([
-        { slug: 'ficcao', name: 'Ficção' },
-      ]);
-
-      const result = await service.findByIdResponse('book-1');
-
-      expect(result.slug).toBe('o-nome-da-rosa');
-      expect(result.categories).toEqual([{ slug: 'ficcao', name: 'Ficção' }]);
     });
   });
 

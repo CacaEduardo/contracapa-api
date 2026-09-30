@@ -20,7 +20,7 @@ export class ResendMailProvider implements MailProvider {
     this.fromEmail =
       config.get('MAIL_FROM_EMAIL', { infer: true }) ?? 'onboarding@resend.dev';
     this.fromName =
-      config.get('MAIL_FROM_NAME', { infer: true }) ?? 'Contracapa';
+      config.get('MAIL_FROM_NAME', { infer: true }) ?? 'Biblioteca do Mercado';
   }
 
   async send({ to, subject, html }: SendMailParams): Promise<void> {

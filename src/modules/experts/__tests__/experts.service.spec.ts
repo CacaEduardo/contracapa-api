@@ -14,6 +14,7 @@ describe('ExpertsService', () => {
 
   const mockExpertModel = {
     find: jest.fn(),
+    findOne: jest.fn(),
     findById: jest.fn(),
     findByIdAndUpdate: jest.fn(),
     findByIdAndDelete: jest.fn(),
@@ -37,6 +38,8 @@ describe('ExpertsService', () => {
     socialLinks: [],
     avatarSrc: null,
     avatarKey: null,
+    active: true,
+    reviewCount: 0,
   };
 
   beforeEach(async () => {
@@ -145,6 +148,22 @@ describe('ExpertsService', () => {
       );
     });
 
+    it('deve inativar o especialista', async () => {
+      mockExpertModel.findById.mockReturnValue(execOf(expert));
+      mockExpertModel.findByIdAndUpdate.mockReturnValue(
+        execOf({ ...expert, active: false }),
+      );
+
+      const result = await service.update('expert-1', { active: false });
+
+      expect(mockExpertModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        'expert-1',
+        { active: false },
+        { new: true },
+      );
+      expect(result.active).toBe(false);
+    });
+
     it('deve lançar ConflictException ao trocar para e-mail já usado', async () => {
       mockExpertModel.findById.mockReturnValue(execOf(expert));
       mockExpertModel.exists.mockReturnValue(execOf({ _id: 'outro' }));
@@ -156,7 +175,89 @@ describe('ExpertsService', () => {
     });
   });
 
+  describe('findAllPublic / findBySlugPublic', () => {
+    it('deve listar só ativos com resenha, A–Z, sem e-mail nem telefone', async () => {
+      const sortMock = jest
+        .fn()
+        .mockReturnValue(
+          execOf([{ ...expert, phone: '11999999999', reviewCount: 2 }]),
+        );
+      mockExpertModel.find.mockReturnValue({ sort: sortMock });
+
+      const [result] = await service.findAllPublic();
+
+      expect(mockExpertModel.find).toHaveBeenCalledWith({
+        active: true,
+        reviewCount: { $gt: 0 },
+      });
+      expect(sortMock).toHaveBeenCalledWith({ fullName: 1 });
+      expect(result).toMatchObject({ slug: 'ana-souza', reviewCount: 2 });
+      expect(result).not.toHaveProperty('email');
+      expect(result).not.toHaveProperty('phone');
+    });
+
+    it('deve lançar NotFoundException para especialista inativo ou sem resenha', async () => {
+      mockExpertModel.findOne.mockReturnValue(execOf(null));
+
+      await expect(service.findBySlugPublic('ana-souza')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockExpertModel.findOne).toHaveBeenCalledWith({
+        active: true,
+        reviewCount: { $gt: 0 },
+        slug: 'ana-souza',
+      });
+    });
+
+    it('deve devolver o perfil público sem e-mail nem telefone', async () => {
+      mockExpertModel.findOne.mockReturnValue(
+        execOf({ ...expert, reviewCount: 1 }),
+      );
+
+      const result = await service.findBySlugPublic('ana-souza');
+
+      expect(result).not.toHaveProperty('email');
+      expect(result).not.toHaveProperty('phone');
+    });
+  });
+
+  describe('setReviewCount', () => {
+    it('deve gravar a quantidade de resenhas', async () => {
+      mockExpertModel.findByIdAndUpdate.mockReturnValue(execOf(expert));
+
+      await service.setReviewCount('expert-1', 3);
+
+      expect(mockExpertModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        'expert-1',
+        { reviewCount: 3 },
+      );
+    });
+
+    it('não deve lançar quando a sincronização falhar', async () => {
+      mockExpertModel.findByIdAndUpdate.mockReturnValue({
+        exec: jest.fn().mockRejectedValue(new Error('falha de rede')),
+      });
+
+      await expect(
+        service.setReviewCount('expert-1', 1),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe('remove', () => {
+    it('deve bloquear a exclusão e sugerir inativar quando assinar resenhas', async () => {
+      mockExpertModel.findById.mockReturnValue(
+        execOf({ ...expert, reviewCount: 1 }),
+      );
+
+      await expect(service.remove('expert-1')).rejects.toThrow(
+        new ConflictException(
+          'Este especialista assina resenhas. Inative-o para ocultá-lo do site.',
+        ),
+      );
+      expect(mockExpertModel.findByIdAndDelete).not.toHaveBeenCalled();
+    });
+
     it('deve excluir e apagar o avatar do storage', async () => {
       mockExpertModel.findById.mockReturnValue(
         execOf({ ...expert, avatarKey: 'experts/a.png' }),

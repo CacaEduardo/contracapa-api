@@ -8,6 +8,8 @@ describe('BooksController', () => {
 
   const mockBooksService = {
     findAll: jest.fn(),
+    findAllAdmin: jest.fn(),
+    findBySlugAdmin: jest.fn(),
     findRelated: jest.fn(),
     findBySlug: jest.fn(),
     create: jest.fn(),
@@ -40,6 +42,28 @@ describe('BooksController', () => {
     await expect(
       controller.findAll({ sort: 'recentes', page: 1, pageSize: 12 }),
     ).resolves.toEqual(result);
+  });
+
+  it('deve listar livros para o admin via service, incluindo inativos', async () => {
+    const query = {
+      status: 'all' as const,
+      sort: 'az' as const,
+      page: 1,
+      pageSize: 200,
+    };
+    mockBooksService.findAllAdmin.mockResolvedValue({ items: [] });
+
+    await controller.findAllAdmin(query);
+
+    expect(mockBooksService.findAllAdmin).toHaveBeenCalledWith(query);
+  });
+
+  it('deve buscar livro por slug para o admin via service', async () => {
+    mockBooksService.findBySlugAdmin.mockResolvedValue({ slug: 'slug' });
+
+    await expect(controller.findBySlugAdmin('slug')).resolves.toEqual({
+      slug: 'slug',
+    });
   });
 
   it('deve buscar livros relacionados via service', async () => {

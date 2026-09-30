@@ -30,8 +30,8 @@ describe('ResendMailProvider', () => {
   it('deve enviar e-mail via Resend com from configurado', async () => {
     const module: TestingModule = await buildProvider({
       RESEND_API_KEY: 're_test_key',
-      MAIL_FROM_EMAIL: 'contato@contracapa.com',
-      MAIL_FROM_NAME: 'Contracapa',
+      MAIL_FROM_EMAIL: 'contato@bibliotecadomercado.com.br',
+      MAIL_FROM_NAME: 'Biblioteca do Mercado',
     });
     const provider = module.get(ResendMailProvider);
     sendMock.mockResolvedValue({ data: { id: '1' }, error: null });
@@ -43,7 +43,7 @@ describe('ResendMailProvider', () => {
     });
 
     expect(sendMock).toHaveBeenCalledWith({
-      from: 'Contracapa <contato@contracapa.com>',
+      from: 'Biblioteca do Mercado <contato@bibliotecadomercado.com.br>',
       to: 'leitor@example.com',
       subject: 'Assunto',
       html: '<p>Corpo</p>',
@@ -65,7 +65,7 @@ describe('ResendMailProvider', () => {
 
     expect(sendMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: 'Contracapa <onboarding@resend.dev>',
+        from: 'Biblioteca do Mercado <onboarding@resend.dev>',
       }),
     );
   });

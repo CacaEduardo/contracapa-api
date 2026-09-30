@@ -13,4 +13,16 @@ describe('updateBookSchema', () => {
 
     expect(result.categorySlugs).toEqual(['ficcao']);
   });
+
+  it('aceita inativar e reativar o livro', () => {
+    expect(updateBookSchema.parse({ active: false })).toEqual({
+      active: false,
+    });
+  });
+
+  it('converte descrição vazia em null', () => {
+    expect(updateBookSchema.parse({ description: '  ' }).description).toBe(
+      null,
+    );
+  });
 });

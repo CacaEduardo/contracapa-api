@@ -52,6 +52,12 @@ export class Expert {
   @Prop({ type: String, default: null })
   avatarKey!: string | null;
 
+  @Prop({ default: true, index: true })
+  active!: boolean;
+
+  @Prop({ default: 0 })
+  reviewCount!: number;
+
   createdAt?: Date;
   updatedAt?: Date;
 }

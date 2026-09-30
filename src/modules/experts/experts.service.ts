@@ -1,10 +1,11 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { isValidObjectId, Model } from 'mongoose';
 import { escapeRegExp } from 'src/common/lib/escape-regexp';
 import { slugify } from 'src/common/lib/slugify';
 import type { CreateExpertDto } from 'src/modules/experts/dto/create-expert.dto';
@@ -12,7 +13,9 @@ import type { ListExpertsQueryDto } from 'src/modules/experts/dto/list-experts-q
 import type { UpdateExpertDto } from 'src/modules/experts/dto/update-expert.dto';
 import {
   toExpertResponse,
+  toPublicExpert,
   type ExpertResponse,
+  type PublicExpert,
 } from 'src/modules/experts/expert-response';
 import {
   Expert,
@@ -21,9 +24,16 @@ import {
 import { StorageService } from 'src/modules/storage/storage.service';
 
 const NOT_FOUND_MESSAGE = 'Especialista não encontrado';
+const IN_USE_MESSAGE =
+  'Este especialista assina resenhas. Inative-o para ocultá-lo do site.';
+
+// Só aparece para o leitor quem está ativo e já assinou alguma resenha.
+const PUBLIC_FILTER = { active: true, reviewCount: { $gt: 0 } };
 
 @Injectable()
 export class ExpertsService {
+  private readonly logger = new Logger(ExpertsService.name);
+
   constructor(
     @InjectModel(Expert.name)
     private readonly expertModel: Model<ExpertDocument>,
@@ -63,6 +73,45 @@ export class ExpertsService {
     return experts.map(toExpertResponse);
   }
 
+  async findAllPublic(): Promise<PublicExpert[]> {
+    const experts = await this.expertModel
+      .find(PUBLIC_FILTER)
+      .sort({ fullName: 1 })
+      .exec();
+
+    return experts.map(toPublicExpert);
+  }
+
+  async findBySlugPublic(slug: string): Promise<PublicExpert> {
+    const expert = await this.expertModel
+      .findOne({ ...PUBLIC_FILTER, slug })
+      .exec();
+
+    if (!expert) {
+      throw new NotFoundException(NOT_FOUND_MESSAGE);
+    }
+
+    return toPublicExpert(expert);
+  }
+
+  async findBySlug(slug: string): Promise<ExpertDocument | null> {
+    return this.expertModel.findOne({ slug }).exec();
+  }
+
+  async findByIds(ids: string[]): Promise<PublicExpert[]> {
+    const validIds = ids.filter((id) => isValidObjectId(id));
+
+    if (validIds.length === 0) {
+      return [];
+    }
+
+    const experts = await this.expertModel
+      .find({ _id: { $in: validIds } })
+      .exec();
+
+    return experts.map(toPublicExpert);
+  }
+
   async findByIdResponse(id: string): Promise<ExpertResponse> {
     const expert = await this.findById(id);
     return toExpertResponse(expert);
@@ -83,6 +132,7 @@ export class ExpertsService {
       ...(dto.phone !== undefined && { phone: dto.phone }),
       ...(dto.podcastUrl !== undefined && { podcastUrl: dto.podcastUrl }),
       ...(dto.socialLinks !== undefined && { socialLinks: dto.socialLinks }),
+      ...(dto.active !== undefined && { active: dto.active }),
     };
 
     return this.updateOrFail(id, payload);
@@ -90,6 +140,10 @@ export class ExpertsService {
 
   async remove(id: string): Promise<void> {
     const expert = await this.findById(id);
+
+    if (expert.reviewCount > 0) {
+      throw new ConflictException(IN_USE_MESSAGE);
+    }
 
     await this.expertModel.findByIdAndDelete(id).exec();
 
@@ -125,7 +179,17 @@ export class ExpertsService {
     return this.updateOrFail(id, { avatarSrc: null, avatarKey: null });
   }
 
-  private async findById(id: string): Promise<ExpertDocument> {
+  async setReviewCount(id: string, reviewCount: number): Promise<void> {
+    try {
+      await this.expertModel.findByIdAndUpdate(id, { reviewCount }).exec();
+    } catch (error) {
+      this.logger.warn(
+        `Falha ao sincronizar resenhas do especialista: expertId=${id} ${String(error)}`,
+      );
+    }
+  }
+
+  async findById(id: string): Promise<ExpertDocument> {
     const expert = await this.expertModel.findById(id).exec();
 
     if (!expert) {

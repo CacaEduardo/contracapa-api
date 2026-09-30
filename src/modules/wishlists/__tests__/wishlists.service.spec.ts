@@ -21,16 +21,12 @@ const BOOK_A = '507f1f77bcf86cd7994390aa';
 const BOOK_B = '507f1f77bcf86cd7994390bb';
 const BOOK_C = '507f1f77bcf86cd7994390cc';
 
-const bookResponse = (
-  id: string,
-  title: string,
-  verdict: 'positive' | 'negative' | null,
-) => ({
+const bookResponse = (id: string, title: string, active = true) => ({
   _id: id,
   title,
   author: 'Autor',
   coverSrc: null,
-  verdict,
+  active,
 });
 
 const makeList = (
@@ -116,8 +112,8 @@ describe('WishlistsService', () => {
         sort: jest.fn().mockReturnValue(execOf([list])),
       });
       mockBooksService.findByIds.mockResolvedValue([
-        bookResponse(BOOK_A, 'Alfa', null),
-        bookResponse(BOOK_B, 'Beta', null),
+        bookResponse(BOOK_A, 'Alfa'),
+        bookResponse(BOOK_B, 'Beta'),
       ]);
 
       const [summary] = await service.findAllByOwner(OWNER_ID);
@@ -229,9 +225,9 @@ describe('WishlistsService', () => {
     beforeEach(() => {
       mockWishlistModel.findOne.mockReturnValue(execOf(makeList({ items })));
       mockBooksService.findByIds.mockResolvedValue([
-        bookResponse(BOOK_A, 'Carvão', 'negative'),
-        bookResponse(BOOK_B, 'Amora', null),
-        bookResponse(BOOK_C, 'Brasa', 'positive'),
+        bookResponse(BOOK_A, 'Carvão'),
+        bookResponse(BOOK_B, 'Amora'),
+        bookResponse(BOOK_C, 'Brasa'),
       ]);
     });
 
@@ -255,12 +251,17 @@ describe('WishlistsService', () => {
       ]);
     });
 
-    it('deve ordenar por veredito: positivo, negativo e sem resenha', async () => {
-      const result = await service.findOne(OWNER_ID, LIST_ID, 'verdict');
+    it('deve omitir livros inativos', async () => {
+      mockBooksService.findByIds.mockResolvedValue([
+        bookResponse(BOOK_A, 'Carvão', false),
+        bookResponse(BOOK_B, 'Amora'),
+        bookResponse(BOOK_C, 'Brasa'),
+      ]);
+
+      const result = await service.findOne(OWNER_ID, LIST_ID, 'recent');
 
       expect(result.items.map((item) => item.book.title)).toEqual([
         'Brasa',
-        'Carvão',
         'Amora',
       ]);
     });

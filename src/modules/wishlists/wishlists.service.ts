@@ -32,16 +32,8 @@ const PREVIEW_SIZE = 4;
 const NOT_FOUND_MESSAGE = 'Lista não encontrada';
 const DUPLICATE_NAME_MESSAGE = 'Você já tem uma lista com este nome';
 
-const VERDICT_ORDER: Record<string, number> = {
-  positive: 0,
-  negative: 1,
-};
-
 const byAddedAtDesc = (a: { addedAt: Date }, b: { addedAt: Date }) =>
   b.addedAt.getTime() - a.addedAt.getTime();
-
-const verdictRank = (book: BookResponse) =>
-  book.verdict ? VERDICT_ORDER[book.verdict] : 2;
 
 const ITEM_SORTERS: Record<
   WishlistSort,
@@ -49,8 +41,6 @@ const ITEM_SORTERS: Record<
 > = {
   recent: byAddedAtDesc,
   az: (a, b) => a.book.title.localeCompare(b.book.title, 'pt-BR'),
-  verdict: (a, b) =>
-    verdictRank(a.book) - verdictRank(b.book) || byAddedAtDesc(a, b),
 };
 
 @Injectable()
@@ -291,7 +281,10 @@ export class WishlistsService {
     const uniqueIds = [...new Set(bookIds.map((id) => id.toString()))];
     const books = await this.booksService.findByIds(uniqueIds);
 
-    return new Map(books.map((book) => [book._id, book]));
+    // Livro inativo sai do catálogo, inclusive das listas do leitor.
+    return new Map(
+      books.filter((book) => book.active).map((book) => [book._id, book]),
+    );
   }
 
   private async toSummaries(

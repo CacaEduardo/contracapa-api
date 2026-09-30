@@ -1,7 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
-
-export type BookVerdict = 'positive' | 'negative';
+import { EDITORIAS, type Editoria } from 'src/modules/books/editorias';
 
 @Schema({ timestamps: true })
 export class Book {
@@ -13,6 +12,9 @@ export class Book {
 
   @Prop({ required: true })
   author!: string;
+
+  @Prop({ type: String, default: null })
+  description!: string | null;
 
   @Prop({ required: true })
   year!: number;
@@ -32,17 +34,20 @@ export class Book {
   @Prop({ type: [String], default: [], index: true })
   categorySlugs!: string[];
 
-  @Prop({ type: String, default: null, index: true })
-  reviewId!: string | null;
+  @Prop({ default: true, index: true })
+  active!: boolean;
 
-  @Prop({ type: String, enum: ['positive', 'negative'], default: null })
-  reviewVerdict!: BookVerdict | null;
+  @Prop({ type: [String], enum: EDITORIAS, default: [], index: true })
+  editorias!: Editoria[];
 
-  @Prop({ default: false })
-  reviewWeekly!: boolean;
+  @Prop({ type: [String], default: [], index: true })
+  expertSlugs!: string[];
 
-  @Prop({ type: Date, default: null })
-  reviewPublishedAt!: Date | null;
+  @Prop({ default: 0 })
+  recommendationCount!: number;
+
+  @Prop({ default: 0 })
+  disrecommendationCount!: number;
 
   createdAt?: Date;
   updatedAt?: Date;

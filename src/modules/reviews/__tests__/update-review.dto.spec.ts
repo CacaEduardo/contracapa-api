@@ -19,4 +19,10 @@ describe('updateReviewSchema', () => {
     expect(result.weekly).toBe(true);
     expect(result.podcast).toEqual({ spotify: 'https://open.spotify.com' });
   });
+
+  it('continua exigindo ao menos uma indicação quando as indicações são enviadas', () => {
+    expect(updateReviewSchema.safeParse({ indications: [] }).success).toBe(
+      false,
+    );
+  });
 });

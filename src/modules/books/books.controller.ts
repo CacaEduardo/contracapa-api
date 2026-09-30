@@ -23,7 +23,9 @@ import {
   type CreateBookDto,
 } from 'src/modules/books/dto/create-book.dto';
 import {
+  listBooksAdminQuerySchema,
   listBooksQuerySchema,
+  type ListBooksAdminQueryDto,
   type ListBooksQueryDto,
 } from 'src/modules/books/dto/list-books-query.dto';
 import {
@@ -40,6 +42,20 @@ export class BooksController {
   @Public()
   findAll(@Query({ schema: listBooksQuerySchema }) query: ListBooksQueryDto) {
     return this.booksService.findAll(query);
+  }
+
+  @Get('admin')
+  @Roles('admin')
+  findAllAdmin(
+    @Query({ schema: listBooksAdminQuerySchema }) query: ListBooksAdminQueryDto,
+  ) {
+    return this.booksService.findAllAdmin(query);
+  }
+
+  @Get('admin/:slug')
+  @Roles('admin')
+  findBySlugAdmin(@Param('slug') slug: string) {
+    return this.booksService.findBySlugAdmin(slug);
   }
 
   @Get(':slug/related')

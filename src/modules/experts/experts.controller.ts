@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { mongoIdSchema } from 'src/common/dto/mongo-id.dto';
+import { Public } from 'src/common/decorators/public.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import {
   createExpertSchema,
@@ -32,11 +33,23 @@ import { ExpertsService } from 'src/modules/experts/experts.service';
 import { imageUploadInterceptorOptions } from 'src/modules/storage/multer-options';
 
 @Controller('experts')
-@Roles('admin')
 export class ExpertsController {
   constructor(private readonly expertsService: ExpertsService) {}
 
+  @Get('public')
+  @Public()
+  findAllPublic() {
+    return this.expertsService.findAllPublic();
+  }
+
+  @Get('public/:slug')
+  @Public()
+  findBySlugPublic(@Param('slug') slug: string) {
+    return this.expertsService.findBySlugPublic(slug);
+  }
+
   @Get()
+  @Roles('admin')
   findAll(
     @Query({ schema: listExpertsQuerySchema }) query: ListExpertsQueryDto,
   ) {
@@ -44,17 +57,20 @@ export class ExpertsController {
   }
 
   @Get(':id')
+  @Roles('admin')
   findOne(@Param('id', { schema: mongoIdSchema }) id: string) {
     return this.expertsService.findByIdResponse(id);
   }
 
   @Post()
+  @Roles('admin')
   @HttpCode(HttpStatus.CREATED)
   create(@Body({ schema: createExpertSchema }) body: CreateExpertDto) {
     return this.expertsService.create(body);
   }
 
   @Patch(':id')
+  @Roles('admin')
   update(
     @Param('id', { schema: mongoIdSchema }) id: string,
     @Body({ schema: updateExpertSchema }) body: UpdateExpertDto,
@@ -63,12 +79,14 @@ export class ExpertsController {
   }
 
   @Delete(':id')
+  @Roles('admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id', { schema: mongoIdSchema }) id: string) {
     return this.expertsService.remove(id);
   }
 
   @Post(':id/avatar')
+  @Roles('admin')
   @UseInterceptors(FileInterceptor('avatar', imageUploadInterceptorOptions))
   uploadAvatar(
     @Param('id', { schema: mongoIdSchema }) id: string,
@@ -84,6 +102,7 @@ export class ExpertsController {
   }
 
   @Delete(':id/avatar')
+  @Roles('admin')
   removeAvatar(@Param('id', { schema: mongoIdSchema }) id: string) {
     return this.expertsService.removeAvatar(id);
   }

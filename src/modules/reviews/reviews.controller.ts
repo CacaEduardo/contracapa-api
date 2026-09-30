@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { mongoIdSchema } from 'src/common/dto/mongo-id.dto';
 import { Public } from 'src/common/decorators/public.decorator';
@@ -16,6 +17,10 @@ import {
   createReviewSchema,
   type CreateReviewDto,
 } from 'src/modules/reviews/dto/create-review.dto';
+import {
+  listReviewsQuerySchema,
+  type ListReviewsQueryDto,
+} from 'src/modules/reviews/dto/list-reviews-query.dto';
 import {
   updateReviewSchema,
   type UpdateReviewDto,
@@ -26,22 +31,30 @@ import { ReviewsService } from 'src/modules/reviews/reviews.service';
 export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
 
+  @Get()
+  @Public()
+  findAll(
+    @Query({ schema: listReviewsQuerySchema }) query: ListReviewsQueryDto,
+  ) {
+    return this.reviewsService.findAll(query);
+  }
+
   @Get('weekly')
   @Public()
   getWeeklyHighlight() {
     return this.reviewsService.getWeeklyHighlight();
   }
 
+  @Get('slug/:slug')
+  @Public()
+  findBySlug(@Param('slug') slug: string) {
+    return this.reviewsService.findBySlug(slug);
+  }
+
   @Get('book/:bookId')
   @Public()
   findByBookId(@Param('bookId', { schema: mongoIdSchema }) bookId: string) {
     return this.reviewsService.findByBookId(bookId);
-  }
-
-  @Get()
-  @Roles('admin')
-  findAll() {
-    return this.reviewsService.findAll();
   }
 
   @Get(':id')

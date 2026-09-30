@@ -8,6 +8,8 @@ describe('ExpertsController', () => {
 
   const mockExpertsService = {
     findAll: jest.fn(),
+    findAllPublic: jest.fn(),
+    findBySlugPublic: jest.fn(),
     findByIdResponse: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
@@ -31,6 +33,21 @@ describe('ExpertsController', () => {
 
     await expect(controller.findAll({ q: 'ana' })).resolves.toEqual([]);
     expect(mockExpertsService.findAll).toHaveBeenCalledWith({ q: 'ana' });
+  });
+
+  it('deve listar especialistas públicos via service', async () => {
+    mockExpertsService.findAllPublic.mockResolvedValue([]);
+
+    await expect(controller.findAllPublic()).resolves.toEqual([]);
+  });
+
+  it('deve buscar especialista público por slug via service', async () => {
+    mockExpertsService.findBySlugPublic.mockResolvedValue({ slug: 'ana' });
+
+    await expect(controller.findBySlugPublic('ana')).resolves.toEqual({
+      slug: 'ana',
+    });
+    expect(mockExpertsService.findBySlugPublic).toHaveBeenCalledWith('ana');
   });
 
   it('deve criar especialista via service', async () => {

@@ -12,7 +12,7 @@ export class MailService {
   sendPasswordReset(to: string, resetUrl: string): Promise<void> {
     return this.provider.send({
       to,
-      subject: 'Redefinição de senha — Contracapa',
+      subject: 'Redefinição de senha — Biblioteca do Mercado',
       html: passwordResetTemplate(resetUrl),
     });
   }

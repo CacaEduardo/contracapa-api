@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
-import type { BookVerdict } from 'src/modules/books/schemas/book.schema';
+import { EDITORIAS, type Editoria } from 'src/modules/books/editorias';
 
 export type ReviewPodcastLinks = {
   spotify?: string;
@@ -8,13 +8,27 @@ export type ReviewPodcastLinks = {
   apple?: string;
 };
 
+@Schema({ _id: false })
+export class ReviewIndication {
+  @Prop({ type: String, enum: EDITORIAS, required: true })
+  editoria!: Editoria;
+
+  @Prop({ type: String, required: true })
+  bookId!: string;
+}
+
+const ReviewIndicationSchema = SchemaFactory.createForClass(ReviewIndication);
+
 @Schema({ timestamps: true, minimize: false })
 export class Review {
-  @Prop({ type: String, required: true, unique: true, index: true })
-  bookId!: string;
+  @Prop({ required: true, unique: true, index: true })
+  slug!: string;
 
-  @Prop({ type: String, default: null })
-  editorialTitle!: string | null;
+  @Prop({ type: String, required: true, index: true })
+  expertId!: string;
+
+  @Prop({ required: true })
+  editorialTitle!: string;
 
   @Prop({ required: true })
   excerpt!: string;
@@ -22,8 +36,8 @@ export class Review {
   @Prop({ required: true })
   content!: string;
 
-  @Prop({ type: String, enum: ['positive', 'negative'], required: true })
-  verdict!: BookVerdict;
+  @Prop({ type: [ReviewIndicationSchema], required: true })
+  indications!: ReviewIndication[];
 
   @Prop({ required: true })
   publishedAt!: Date;
@@ -40,3 +54,4 @@ export class Review {
 
 export type ReviewDocument = HydratedDocument<Review>;
 export const ReviewSchema = SchemaFactory.createForClass(Review);
+ReviewSchema.index({ 'indications.bookId': 1 });

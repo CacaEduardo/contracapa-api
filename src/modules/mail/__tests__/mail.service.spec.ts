@@ -27,15 +27,16 @@ describe('MailService', () => {
   it('deve enviar e-mail de redefinição de senha com o link informado', async () => {
     await service.sendPasswordReset(
       'admin@example.com',
-      'https://contracapa.com/redefinir-senha?token=xyz',
+      'https://bibliotecadomercado.com.br/redefinir-senha?token=xyz',
     );
 
     const call = mockProvider.send.mock.calls[0][0];
 
     expect(call.to).toBe('admin@example.com');
-    expect(call.subject).toContain('senha');
+    expect(call.subject).toBe('Redefinição de senha — Biblioteca do Mercado');
     expect(call.html).toContain(
-      'https://contracapa.com/redefinir-senha?token=xyz',
+      'https://bibliotecadomercado.com.br/redefinir-senha?token=xyz',
     );
+    expect(call.html).toContain('Biblioteca do Mercado');
   });
 });

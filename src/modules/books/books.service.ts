@@ -16,13 +16,13 @@ import {
   type BookResponse,
 } from 'src/modules/books/book-response';
 import type { CreateBookDto } from 'src/modules/books/dto/create-book.dto';
-import type { ListBooksQueryDto } from 'src/modules/books/dto/list-books-query.dto';
+import type {
+  ListBooksAdminQueryDto,
+  ListBooksQueryDto,
+} from 'src/modules/books/dto/list-books-query.dto';
 import type { UpdateBookDto } from 'src/modules/books/dto/update-book.dto';
-import {
-  Book,
-  type BookDocument,
-  type BookVerdict,
-} from 'src/modules/books/schemas/book.schema';
+import type { Editoria } from 'src/modules/books/editorias';
+import { Book, type BookDocument } from 'src/modules/books/schemas/book.schema';
 import { CategoriesService } from 'src/modules/categories/categories.service';
 import { StorageService } from 'src/modules/storage/storage.service';
 import { WishlistsService } from 'src/modules/wishlists/wishlists.service';
@@ -35,18 +35,25 @@ export type ListBooksResult = {
   pageSize: number;
 };
 
-export type ReviewSnapshot = {
-  reviewId: string;
-  verdict: BookVerdict;
-  weekly: boolean;
-  publishedAt: Date;
+export type IndicationSnapshot = {
+  editorias: Editoria[];
+  expertSlugs: string[];
+  recommendationCount: number;
+  disrecommendationCount: number;
 };
 
+type CatalogQuery = Omit<ListBooksQueryDto, 'pageSize'> & { pageSize: number };
+
 type BookQueryFilter = {
+  active?: boolean;
   categorySlugs?: { $in: string[] };
-  reviewVerdict?: { $in: BookVerdict[] } | null;
-  $and?: Record<string, unknown>[];
+  editorias?: { $in: Editoria[] };
+  expertSlugs?: { $in: string[] };
+  $or?: Record<string, unknown>[];
 };
+
+const IN_USE_MESSAGE =
+  'Este livro está indicado em resenhas. Inative-o para tirá-lo do catálogo.';
 
 const RELATED_BOOKS_LIMIT = 4;
 
@@ -70,6 +77,7 @@ export class BooksService {
     const created = await this.bookModel.create({
       title: dto.title,
       author: dto.author,
+      description: dto.description ?? null,
       year: dto.year,
       pages: dto.pages,
       amazonUrl: dto.amazonUrl ?? null,
@@ -83,69 +91,28 @@ export class BooksService {
   }
 
   async findAll(query: ListBooksQueryDto): Promise<ListBooksResult> {
-    const filter: BookQueryFilter = {};
-    const andConditions: Record<string, unknown>[] = [];
+    return this.listCatalog(query, { active: true });
+  }
 
-    if (query.q) {
-      const regex = new RegExp(escapeRegExp(query.q), 'i');
-      andConditions.push({ $or: [{ title: regex }, { author: regex }] });
-    }
+  async findAllAdmin(query: ListBooksAdminQueryDto): Promise<ListBooksResult> {
+    const { status, ...catalogQuery } = query;
+    const filter: BookQueryFilter =
+      status === 'all' ? {} : { active: status === 'active' };
 
-    if (query.categories?.length) {
-      filter.categorySlugs = { $in: query.categories };
-    }
-
-    if (query.verdicts?.length) {
-      const concreteVerdicts = query.verdicts.filter(
-        (verdict): verdict is BookVerdict => verdict !== 'none',
-      );
-      const includesNone = query.verdicts.includes('none');
-
-      if (includesNone && concreteVerdicts.length > 0) {
-        andConditions.push({
-          $or: [
-            { reviewVerdict: { $in: concreteVerdicts } },
-            { reviewVerdict: null },
-          ],
-        });
-      } else if (includesNone) {
-        filter.reviewVerdict = null;
-      } else {
-        filter.reviewVerdict = { $in: concreteVerdicts };
-      }
-    }
-
-    if (andConditions.length > 0) {
-      filter.$and = andConditions;
-    }
-
-    const sortOption: Record<string, 1 | -1> =
-      query.sort === 'az'
-        ? { title: 1 }
-        : query.sort === 'za'
-          ? { title: -1 }
-          : { reviewPublishedAt: -1, createdAt: -1 };
-
-    const total = await this.bookModel.countDocuments(filter).exec();
-    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
-
-    const books = await this.bookModel
-      .find(filter)
-      .sort(sortOption)
-      .skip((query.page - 1) * query.pageSize)
-      .limit(query.pageSize)
-      .exec();
-
-    return {
-      items: await this.toResponseList(books),
-      total,
-      totalPages,
-      page: query.page,
-      pageSize: query.pageSize,
-    };
+    return this.listCatalog(catalogQuery, filter);
   }
 
   async findBySlug(slug: string): Promise<BookResponse> {
+    const book = await this.bookModel.findOne({ slug, active: true }).exec();
+
+    if (!book) {
+      throw new NotFoundException('Livro não encontrado');
+    }
+
+    return this.toResponse(book);
+  }
+
+  async findBySlugAdmin(slug: string): Promise<BookResponse> {
     const book = await this.bookModel.findOne({ slug }).exec();
 
     if (!book) {
@@ -156,7 +123,7 @@ export class BooksService {
   }
 
   async findRelated(slug: string): Promise<BookResponse[]> {
-    const book = await this.bookModel.findOne({ slug }).exec();
+    const book = await this.bookModel.findOne({ slug, active: true }).exec();
 
     if (!book || book.categorySlugs.length === 0) {
       return [];
@@ -165,6 +132,7 @@ export class BooksService {
     const related = await this.bookModel
       .find({
         slug: { $ne: slug },
+        active: true,
         categorySlugs: { $in: book.categorySlugs },
       })
       .limit(RELATED_BOOKS_LIMIT)
@@ -194,11 +162,6 @@ export class BooksService {
     return this.toResponseList(books);
   }
 
-  async findByIdResponse(id: string): Promise<BookResponse> {
-    const book = await this.findById(id);
-    return this.toResponse(book);
-  }
-
   async update(id: string, dto: UpdateBookDto): Promise<BookResponse> {
     const book = await this.findById(id);
 
@@ -211,12 +174,14 @@ export class BooksService {
     const payload: Partial<Book> = {
       ...(dto.title !== undefined && { title: dto.title }),
       ...(dto.author !== undefined && { author: dto.author }),
+      ...(dto.description !== undefined && { description: dto.description }),
       ...(dto.year !== undefined && { year: dto.year }),
       ...(dto.pages !== undefined && { pages: dto.pages }),
       ...(dto.amazonUrl !== undefined && { amazonUrl: dto.amazonUrl }),
       ...(dto.categorySlugs !== undefined && {
         categorySlugs: dto.categorySlugs,
       }),
+      ...(dto.active !== undefined && { active: dto.active }),
     };
 
     const updated = await this.bookModel
@@ -227,9 +192,11 @@ export class BooksService {
       throw new NotFoundException('Livro não encontrado');
     }
 
-    if (dto.categorySlugs) {
-      await this.syncCategoryCounts(previousSlugs, dto.categorySlugs);
-    }
+    // A contagem de livros por categoria só considera livros ativos.
+    await this.syncCategoryCounts(
+      book.active ? previousSlugs : [],
+      updated.active ? updated.categorySlugs : [],
+    );
 
     return this.toResponse(updated);
   }
@@ -237,12 +204,16 @@ export class BooksService {
   async remove(id: string): Promise<void> {
     const book = await this.findById(id);
 
-    if (book.reviewId) {
-      throw new ConflictException('Remova a resenha antes de excluir o livro');
+    if (book.recommendationCount + book.disrecommendationCount > 0) {
+      throw new ConflictException(IN_USE_MESSAGE);
     }
 
     await this.bookModel.findByIdAndDelete(id).exec();
-    await this.syncCategoryCounts(book.categorySlugs, []);
+
+    if (book.active) {
+      await this.syncCategoryCounts(book.categorySlugs, []);
+    }
+
     await this.wishlistsService.pullBook(id);
 
     if (book.coverKey) {
@@ -294,57 +265,70 @@ export class BooksService {
     return this.toResponse(updated);
   }
 
-  async setReviewSnapshot(
+  async setIndicationSnapshot(
     bookId: string,
-    snapshot: ReviewSnapshot,
+    snapshot: IndicationSnapshot,
   ): Promise<void> {
     try {
-      await this.bookModel
-        .findByIdAndUpdate(bookId, {
-          reviewId: snapshot.reviewId,
-          reviewVerdict: snapshot.verdict,
-          reviewWeekly: snapshot.weekly,
-          reviewPublishedAt: snapshot.publishedAt,
-        })
-        .exec();
+      await this.bookModel.findByIdAndUpdate(bookId, snapshot).exec();
     } catch (error) {
       this.logger.warn(
-        `Falha ao sincronizar snapshot de resenha: bookId=${bookId} ${String(error)}`,
-      );
-    }
-  }
-
-  async clearReviewSnapshot(bookId: string): Promise<void> {
-    try {
-      await this.bookModel
-        .findByIdAndUpdate(bookId, {
-          reviewId: null,
-          reviewVerdict: null,
-          reviewWeekly: false,
-          reviewPublishedAt: null,
-        })
-        .exec();
-    } catch (error) {
-      this.logger.warn(
-        `Falha ao limpar snapshot de resenha: bookId=${bookId} ${String(error)}`,
-      );
-    }
-  }
-
-  async setWeeklyFlag(bookId: string, weekly: boolean): Promise<void> {
-    try {
-      await this.bookModel
-        .findByIdAndUpdate(bookId, { reviewWeekly: weekly })
-        .exec();
-    } catch (error) {
-      this.logger.warn(
-        `Falha ao atualizar flag de resenha semanal: bookId=${bookId} ${String(error)}`,
+        `Falha ao sincronizar indicações do livro: bookId=${bookId} ${String(error)}`,
       );
     }
   }
 
   async count(): Promise<number> {
     return this.bookModel.countDocuments().exec();
+  }
+
+  private async listCatalog(
+    query: CatalogQuery,
+    baseFilter: BookQueryFilter,
+  ): Promise<ListBooksResult> {
+    const filter: BookQueryFilter = { ...baseFilter };
+
+    if (query.q) {
+      const regex = new RegExp(escapeRegExp(query.q), 'i');
+      filter.$or = [{ title: regex }, { author: regex }];
+    }
+
+    if (query.categories?.length) {
+      filter.categorySlugs = { $in: query.categories };
+    }
+
+    if (query.editorias?.length) {
+      filter.editorias = { $in: query.editorias };
+    }
+
+    if (query.experts?.length) {
+      filter.expertSlugs = { $in: query.experts };
+    }
+
+    const sortOption: Record<string, 1 | -1> =
+      query.sort === 'az'
+        ? { title: 1 }
+        : query.sort === 'za'
+          ? { title: -1 }
+          : { createdAt: -1 };
+
+    const total = await this.bookModel.countDocuments(filter).exec();
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+
+    const books = await this.bookModel
+      .find(filter)
+      .sort(sortOption)
+      .skip((query.page - 1) * query.pageSize)
+      .limit(query.pageSize)
+      .exec();
+
+    return {
+      items: await this.toResponseList(books),
+      total,
+      totalPages,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
   }
 
   private async assertCategoriesExist(slugs: string[]): Promise<void> {

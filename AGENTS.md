@@ -44,10 +44,12 @@ src/
 - Código só sobe para `common/` quando um segundo módulo precisa. Filter que conhece um domínio sai de `common/`.
 - Env: `ConfigModule.forRoot({ isGlobal: true, validationSchema })`. Leia só via `ConfigService` — nunca `process.env` solto (exceto `PORT` no bootstrap, depois da validação).
 - Mongoose e JWT com `forRootAsync` / `registerAsync` + `ConfigService`. `JwtModule` é `global: true`.
-- `JwtAuthGuard` é `APP_GUARD`. Públicas com `@Public()`: `POST /auth/signin`, `/auth/signup`, `/auth/google`, `/auth/forgot-password`, `/auth/reset-password` e as leituras do catálogo. Usuário via `@CurrentUser()`. Sem middleware Express para JWT.
+- `JwtAuthGuard` é `APP_GUARD`. Públicas com `@Public()`: `POST /auth/signin`, `/auth/signup`, `/auth/google`, `/auth/forgot-password`, `/auth/reset-password` e as leituras do catálogo (`GET /books`, `/books/:slug`, `/books/:slug/related`, `/reviews`, `/reviews/weekly`, `/reviews/slug/:slug`, `/reviews/book/:bookId`, `/experts/public`, `/experts/public/:slug`). Leitura pública de especialista usa a projeção `PublicExpert` (sem e-mail e telefone). Usuário via `@CurrentUser()`. Sem middleware Express para JWT.
 - Login com Google: `GoogleIdentityService` valida o `id_token` com `GOOGLE_CLIENT_ID`; conta existente com o mesmo e-mail é vinculada.
 - Recursos do leitor (ex.: `wishlists`) são sempre filtrados pelo dono (`@CurrentUser().sub`); recurso de outra pessoa responde 404.
 - `BooksModule` ↔ `WishlistsModule` usam `forwardRef` (livro excluído sai das listas; listas resolvem livros).
+- `ReviewsModule` → `BooksModule` + `ExpertsModule`, só nessa direção. Resenha tem especialista e 1–3 indicações (`market` | `off_market` | `do_not_read`, uma por editoria). Após criar/editar/excluir, `ReviewsService` recalcula os snapshots desnormalizados: no livro `editorias`, `expertSlugs`, `recommendationCount`, `disrecommendationCount`; no especialista `reviewCount`. Filtros do catálogo e bloqueio de exclusão (409, sugere inativar) leem esses campos.
+- Livro e especialista têm `active`. Leituras públicas filtram inativos (livro inativo também sai das listas de desejos); resenhas seguem trazendo o item com `active: false`. `GET /books/admin` e `/books/admin/:slug` incluem inativos.
 - Papéis: `admin` | `user`. Rotas administrativas usam `@Roles('admin')`.
 
 ## Padrões de código
