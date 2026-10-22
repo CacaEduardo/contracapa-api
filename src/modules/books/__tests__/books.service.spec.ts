@@ -59,9 +59,12 @@ describe('BooksService', () => {
     description: null,
     active: true,
     editorias: [],
-    expertSlugs: [],
+    recommenderSlugs: [],
     recommendationCount: 0,
     disrecommendationCount: 0,
+    recommendedAt: {},
+    reviewerSlugs: [],
+    reviewCount: 0,
     createdAt: undefined,
     updatedAt: undefined,
   };
@@ -168,27 +171,36 @@ describe('BooksService', () => {
       return { sortMock, skipMock, limitMock };
     };
 
-    it('deve filtrar por busca, categorias, editorias e especialistas, só entre livros ativos', async () => {
+    it('deve filtrar por busca, categorias, editorias, especialistas e resenhas, só entre livros ativos', async () => {
       const { sortMock, skipMock, limitMock } = mockListQuery([book], 1);
 
       const result = await service.findAll({
         q: 'rosa',
         categories: ['ficcao'],
-        editorias: ['market', 'do_not_read'],
+        editorias: ['market', 'disrecommended'],
         experts: ['ana-lima'],
+        hasReviews: true,
         sort: 'az',
         page: 1,
         pageSize: 15,
       });
 
-      expect(mockBookModel.find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          active: true,
-          categorySlugs: { $in: ['ficcao'] },
-          editorias: { $in: ['market', 'do_not_read'] },
-          expertSlugs: { $in: ['ana-lima'] },
-        }),
-      );
+      expect(mockBookModel.find).toHaveBeenCalledWith({
+        active: true,
+        categorySlugs: { $in: ['ficcao'] },
+        editorias: { $in: ['market', 'disrecommended'] },
+        reviewCount: { $gt: 0 },
+        $and: [
+          { $or: [{ title: /rosa/i }, { author: /rosa/i }] },
+          // Especialista cobre tanto quem recomendou quanto quem resenhou.
+          {
+            $or: [
+              { recommenderSlugs: { $in: ['ana-lima'] } },
+              { reviewerSlugs: { $in: ['ana-lima'] } },
+            ],
+          },
+        ],
+      });
       expect(sortMock).toHaveBeenCalledWith({ title: 1 });
       expect(skipMock).toHaveBeenCalledWith(0);
       expect(limitMock).toHaveBeenCalledWith(15);
@@ -207,6 +219,26 @@ describe('BooksService', () => {
       await service.findAll({ sort: 'recentes', page: 1, pageSize: 15 });
 
       expect(sortMock).toHaveBeenCalledWith({ createdAt: -1 });
+    });
+
+    it('deve ordenar pela recomendação mais recente da editoria quando sort=recomendados', async () => {
+      const { sortMock } = mockListQuery([], 0);
+
+      await service.findAll({
+        editorias: ['off_market'],
+        sort: 'recomendados',
+        page: 1,
+        pageSize: 12,
+      });
+
+      expect(mockBookModel.find).toHaveBeenCalledWith({
+        active: true,
+        editorias: { $in: ['off_market'] },
+      });
+      expect(sortMock).toHaveBeenCalledWith({
+        'recommendedAt.off_market': -1,
+        createdAt: -1,
+      });
     });
 
     it('findAllAdmin deve incluir inativos quando status=all', async () => {
@@ -391,14 +423,15 @@ describe('BooksService', () => {
     it.each([
       ['recomendado', { recommendationCount: 1 }],
       ['desrecomendado', { disrecommendationCount: 1 }],
+      ['resenhado', { reviewCount: 1 }],
     ])(
-      'deve bloquear a exclusão e sugerir inativar quando o livro for %s em resenhas',
+      'deve bloquear a exclusão e sugerir inativar quando o livro for %s',
       async (_, counts) => {
         mockBookModel.findById.mockReturnValue(execOf({ ...book, ...counts }));
 
         await expect(service.remove('book-1')).rejects.toThrow(
           new ConflictException(
-            'Este livro está indicado em resenhas. Inative-o para tirá-lo do catálogo.',
+            'Este livro tem resenhas ou recomendações. Inative-o para tirá-lo do catálogo.',
           ),
         );
         expect(mockBookModel.findByIdAndDelete).not.toHaveBeenCalled();
@@ -496,18 +529,19 @@ describe('BooksService', () => {
     });
   });
 
-  describe('setIndicationSnapshot', () => {
+  describe('setRecommendationSnapshot', () => {
     const snapshot = {
       editorias: ['market' as const],
-      expertSlugs: ['ana-lima'],
+      recommenderSlugs: ['ana-lima'],
       recommendationCount: 1,
       disrecommendationCount: 0,
+      recommendedAt: { market: new Date('2026-10-01') },
     };
 
-    it('deve gravar o snapshot de indicações no livro', async () => {
+    it('deve gravar o snapshot de recomendações no livro', async () => {
       mockBookModel.findByIdAndUpdate.mockReturnValue(execOf(book));
 
-      await service.setIndicationSnapshot('book-1', snapshot);
+      await service.setRecommendationSnapshot('book-1', snapshot);
 
       expect(mockBookModel.findByIdAndUpdate).toHaveBeenCalledWith(
         'book-1',
@@ -521,8 +555,22 @@ describe('BooksService', () => {
       });
 
       await expect(
-        service.setIndicationSnapshot('book-1', snapshot),
+        service.setRecommendationSnapshot('book-1', snapshot),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('setReviewSnapshot', () => {
+    it('deve gravar só os campos de resenha no livro', async () => {
+      mockBookModel.findByIdAndUpdate.mockReturnValue(execOf(book));
+      const snapshot = { reviewerSlugs: ['ana-lima'], reviewCount: 2 };
+
+      await service.setReviewSnapshot('book-1', snapshot);
+
+      expect(mockBookModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        'book-1',
+        snapshot,
+      );
     });
   });
 

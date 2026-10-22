@@ -10,7 +10,9 @@ import { envSchema, Env } from './config/env.schema';
 import { AuthModule } from './modules/auth/auth.module';
 import { BooksModule } from './modules/books/books.module';
 import { CategoriesModule } from './modules/categories/categories.module';
+import { EpisodesModule } from './modules/episodes/episodes.module';
 import { ExpertsModule } from './modules/experts/experts.module';
+import { RecommendationsModule } from './modules/recommendations/recommendations.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { UsersModule } from './modules/users/users.module';
@@ -34,6 +36,8 @@ import { WishlistsModule } from './modules/wishlists/wishlists.module';
     BooksModule,
     ReviewsModule,
     ExpertsModule,
+    EpisodesModule,
+    RecommendationsModule,
     StatsModule,
     WishlistsModule,
   ],

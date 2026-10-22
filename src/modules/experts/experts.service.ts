@@ -25,10 +25,16 @@ import { StorageService } from 'src/modules/storage/storage.service';
 
 const NOT_FOUND_MESSAGE = 'Especialista não encontrado';
 const IN_USE_MESSAGE =
-  'Este especialista assina resenhas. Inative-o para ocultá-lo do site.';
+  'Este especialista tem resenhas, episódios ou recomendações. Inative-o para ocultá-lo do site.';
 
-// Só aparece para o leitor quem está ativo e já assinou alguma resenha.
-const PUBLIC_FILTER = { active: true, reviewCount: { $gt: 0 } };
+// Só aparece para o leitor quem está ativo e já assinou resenha ou participou de episódio.
+const PUBLIC_FILTER = {
+  active: true,
+  $or: [{ reviewCount: { $gt: 0 } }, { episodeCount: { $gt: 0 } }],
+};
+
+export type ExpertCounter =
+  'reviewCount' | 'episodeCount' | 'recommendationCount';
 
 @Injectable()
 export class ExpertsService {
@@ -145,7 +151,10 @@ export class ExpertsService {
   async remove(id: string): Promise<void> {
     const expert = await this.findById(id);
 
-    if (expert.reviewCount > 0) {
+    if (
+      expert.reviewCount + expert.episodeCount + expert.recommendationCount >
+      0
+    ) {
       throw new ConflictException(IN_USE_MESSAGE);
     }
 
@@ -183,12 +192,17 @@ export class ExpertsService {
     return this.updateOrFail(id, { avatarSrc: null, avatarKey: null });
   }
 
-  async setReviewCount(id: string, reviewCount: number): Promise<void> {
+  // Cada contador é escrito só pelo módulo dono da origem (resenhas, episódios, recomendações).
+  async setCounter(
+    id: string,
+    counter: ExpertCounter,
+    value: number,
+  ): Promise<void> {
     try {
-      await this.expertModel.findByIdAndUpdate(id, { reviewCount }).exec();
+      await this.expertModel.findByIdAndUpdate(id, { [counter]: value }).exec();
     } catch (error) {
       this.logger.warn(
-        `Falha ao sincronizar resenhas do especialista: expertId=${id} ${String(error)}`,
+        `Falha ao sincronizar ${counter} do especialista: expertId=${id} ${String(error)}`,
       );
     }
   }

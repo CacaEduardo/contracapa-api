@@ -14,6 +14,8 @@ export type PublicExpert = {
   avatarSrc: string | null;
   active: boolean;
   reviewCount: number;
+  episodeCount: number;
+  recommendationCount: number;
 };
 
 export type ExpertResponse = PublicExpert & {
@@ -37,6 +39,8 @@ export function toPublicExpert(expert: ExpertDocument): PublicExpert {
     avatarSrc: expert.avatarSrc,
     active: expert.active,
     reviewCount: expert.reviewCount,
+    episodeCount: expert.episodeCount,
+    recommendationCount: expert.recommendationCount,
   };
 }
 

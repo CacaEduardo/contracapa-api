@@ -59,10 +59,10 @@ describe('ReviewsController', () => {
   it('deve criar resenha via service', async () => {
     const dto = {
       expertId: 'expert-1',
+      bookId: 'book-1',
       editorialTitle: 'Título',
       excerpt: 'Resumo',
       content: 'Conteúdo',
-      indications: [{ editoria: 'market' as const, bookId: 'book-1' }],
     };
     const created = { _id: '1', ...dto };
     mockReviewsService.create.mockResolvedValue(created);

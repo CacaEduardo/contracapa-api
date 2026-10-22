@@ -1,7 +1,7 @@
-export const EDITORIAS = ['market', 'off_market', 'do_not_read'] as const;
+export const EDITORIAS = ['market', 'off_market', 'disrecommended'] as const;
 
 export type Editoria = (typeof EDITORIAS)[number];
 
-// Livro de Mercado e Livro de Fora de Mercado recomendam; Livro pra Não Ler desrecomenda.
+// Livro de mercado e livro fora de mercado recomendam; desrecomendado não.
 export const isRecommendation = (editoria: Editoria): boolean =>
-  editoria !== 'do_not_read';
+  editoria !== 'disrecommended';
