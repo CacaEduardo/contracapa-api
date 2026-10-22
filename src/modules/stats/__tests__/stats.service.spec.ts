@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BooksService } from 'src/modules/books/books.service';
 import { CategoriesService } from 'src/modules/categories/categories.service';
+import { EpisodesService } from 'src/modules/episodes/episodes.service';
+import { RecommendationsService } from 'src/modules/recommendations/recommendations.service';
 import { ReviewsService } from 'src/modules/reviews/reviews.service';
 import { StatsService } from 'src/modules/stats/stats.service';
 import { UsersService } from 'src/modules/users/users.service';
@@ -11,6 +13,8 @@ describe('StatsService', () => {
   const mockBooksService = { count: jest.fn() };
   const mockCategoriesService = { count: jest.fn() };
   const mockReviewsService = { count: jest.fn() };
+  const mockEpisodesService = { count: jest.fn() };
+  const mockRecommendationsService = { count: jest.fn() };
   const mockUsersService = { countReaders: jest.fn() };
 
   beforeEach(async () => {
@@ -20,6 +24,11 @@ describe('StatsService', () => {
         { provide: BooksService, useValue: mockBooksService },
         { provide: CategoriesService, useValue: mockCategoriesService },
         { provide: ReviewsService, useValue: mockReviewsService },
+        { provide: EpisodesService, useValue: mockEpisodesService },
+        {
+          provide: RecommendationsService,
+          useValue: mockRecommendationsService,
+        },
         { provide: UsersService, useValue: mockUsersService },
       ],
     }).compile();
@@ -32,12 +41,16 @@ describe('StatsService', () => {
     mockBooksService.count.mockResolvedValue(8);
     mockCategoriesService.count.mockResolvedValue(5);
     mockReviewsService.count.mockResolvedValue(6);
+    mockEpisodesService.count.mockResolvedValue(4);
+    mockRecommendationsService.count.mockResolvedValue(9);
     mockUsersService.countReaders.mockResolvedValue(3);
 
     await expect(service.getStats()).resolves.toEqual({
       books: 8,
       categories: 5,
       reviews: 6,
+      episodes: 4,
+      recommendations: 9,
       readers: 3,
     });
   });

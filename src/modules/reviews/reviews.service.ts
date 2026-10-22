@@ -2,35 +2,30 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { slugify } from 'src/common/lib/slugify';
+import {
+  toBookSummary,
+  type BookSummary,
+} from 'src/modules/books/book-response';
 import { BooksService } from 'src/modules/books/books.service';
-import { isRecommendation } from 'src/modules/books/editorias';
 import { ExpertsService } from 'src/modules/experts/experts.service';
 import type { PublicExpert } from 'src/modules/experts/expert-response';
 import type { CreateReviewDto } from 'src/modules/reviews/dto/create-review.dto';
 import type { ListReviewsQueryDto } from 'src/modules/reviews/dto/list-reviews-query.dto';
 import type { UpdateReviewDto } from 'src/modules/reviews/dto/update-review.dto';
 import {
-  toIndicatedBook,
   toReviewResponse,
-  toReviewSummary,
-  type BookIndicationResponse,
-  type IndicatedBook,
   type ListReviewsResult,
   type ReviewResponse,
 } from 'src/modules/reviews/review-response';
 import {
   Review,
   type ReviewDocument,
-  type ReviewIndication,
 } from 'src/modules/reviews/schemas/review.schema';
 
 const NOT_FOUND_MESSAGE = 'Resenha não encontrada';
 const SLUG_FALLBACK = 'resenha';
 
 const unique = (values: string[]) => [...new Set(values)];
-
-const bookIdsOf = (indications: ReviewIndication[]) =>
-  indications.map(({ bookId }) => bookId);
 
 @Injectable()
 export class ReviewsService {
@@ -43,19 +38,18 @@ export class ReviewsService {
 
   async create(dto: CreateReviewDto): Promise<ReviewResponse> {
     await this.expertsService.findById(dto.expertId);
-    await this.assertBooksExist(bookIdsOf(dto.indications));
+    await this.booksService.findById(dto.bookId);
 
     const weekly = dto.weekly ?? false;
 
     const created = await this.reviewModel.create({
       slug: await this.generateUniqueSlug(dto.editorialTitle),
       expertId: dto.expertId,
+      bookId: dto.bookId,
       editorialTitle: dto.editorialTitle,
       excerpt: dto.excerpt,
       content: dto.content,
-      indications: dto.indications,
       weekly,
-      podcast: dto.podcast ?? {},
       publishedAt: new Date(),
     });
 
@@ -63,7 +57,7 @@ export class ReviewsService {
       await this.clearOtherWeeklyFlags(created._id.toString());
     }
 
-    await this.syncSnapshots(bookIdsOf(dto.indications), [dto.expertId]);
+    await this.syncSnapshots([dto.bookId], [dto.expertId]);
 
     return this.toResponse(created);
   }
@@ -109,25 +103,13 @@ export class ReviewsService {
     return this.toResponse(review);
   }
 
-  async findByBookId(bookId: string): Promise<BookIndicationResponse[]> {
+  async findByBookId(bookId: string): Promise<ReviewResponse[]> {
     const reviews = await this.reviewModel
-      .find({ 'indications.bookId': bookId })
+      .find({ bookId })
       .sort({ publishedAt: -1 })
       .exec();
 
-    const experts = await this.resolveExperts(
-      reviews.map(({ expertId }) => expertId),
-    );
-
-    return reviews.flatMap((review) =>
-      review.indications
-        .filter((indication) => indication.bookId === bookId)
-        .map(({ editoria }) => ({
-          editoria,
-          review: toReviewSummary(review),
-          expert: experts.get(review.expertId) ?? null,
-        })),
-    );
+    return this.toResponseList(reviews);
   }
 
   async update(id: string, dto: UpdateReviewDto): Promise<ReviewResponse> {
@@ -137,21 +119,20 @@ export class ReviewsService {
       await this.expertsService.findById(dto.expertId);
     }
 
-    if (dto.indications !== undefined) {
-      await this.assertBooksExist(bookIdsOf(dto.indications));
+    if (dto.bookId !== undefined) {
+      await this.booksService.findById(dto.bookId);
     }
 
     // O slug não acompanha o título: links públicos da resenha precisam ser estáveis.
     const payload: Partial<Review> = {
       ...(dto.expertId !== undefined && { expertId: dto.expertId }),
+      ...(dto.bookId !== undefined && { bookId: dto.bookId }),
       ...(dto.editorialTitle !== undefined && {
         editorialTitle: dto.editorialTitle,
       }),
       ...(dto.excerpt !== undefined && { excerpt: dto.excerpt }),
       ...(dto.content !== undefined && { content: dto.content }),
-      ...(dto.indications !== undefined && { indications: dto.indications }),
       ...(dto.weekly !== undefined && { weekly: dto.weekly }),
-      ...(dto.podcast !== undefined && { podcast: dto.podcast }),
     };
 
     const updated = await this.reviewModel
@@ -167,7 +148,7 @@ export class ReviewsService {
     }
 
     await this.syncSnapshots(
-      [...bookIdsOf(review.indications), ...bookIdsOf(updated.indications)],
+      [review.bookId, updated.bookId],
       [review.expertId, updated.expertId],
     );
 
@@ -178,7 +159,7 @@ export class ReviewsService {
     const review = await this.findDocument(id);
 
     await this.reviewModel.findByIdAndDelete(id).exec();
-    await this.syncSnapshots(bookIdsOf(review.indications), [review.expertId]);
+    await this.syncSnapshots([review.bookId], [review.expertId]);
   }
 
   async getWeeklyHighlight(): Promise<ReviewResponse | null> {
@@ -201,15 +182,6 @@ export class ReviewsService {
     return review;
   }
 
-  private async assertBooksExist(bookIds: string[]): Promise<void> {
-    const ids = unique(bookIds);
-    const books = await this.booksService.findByIds(ids);
-
-    if (books.length !== ids.length) {
-      throw new NotFoundException('Livro não encontrado');
-    }
-  }
-
   private async clearOtherWeeklyFlags(excludeReviewId: string): Promise<void> {
     await this.reviewModel
       .updateMany(
@@ -219,7 +191,7 @@ export class ReviewsService {
       .exec();
   }
 
-  // Recalcula os contadores desnormalizados em livros e especialistas afetados.
+  // Recalcula os snapshots de resenha em livros e especialistas afetados.
   private async syncSnapshots(
     bookIds: string[],
     expertIds: string[],
@@ -227,8 +199,9 @@ export class ReviewsService {
     await Promise.all([
       ...unique(bookIds).map((bookId) => this.syncBookSnapshot(bookId)),
       ...unique(expertIds).map(async (expertId) =>
-        this.expertsService.setReviewCount(
+        this.expertsService.setCounter(
           expertId,
+          'reviewCount',
           await this.reviewModel.countDocuments({ expertId }).exec(),
         ),
       ),
@@ -236,28 +209,14 @@ export class ReviewsService {
   }
 
   private async syncBookSnapshot(bookId: string): Promise<void> {
-    const reviews = await this.reviewModel
-      .find({ 'indications.bookId': bookId })
-      .exec();
-
-    const indications = reviews.flatMap((review) =>
-      review.indications
-        .filter((indication) => indication.bookId === bookId)
-        .map(({ editoria }) => ({ editoria, expertId: review.expertId })),
-    );
-
+    const reviews = await this.reviewModel.find({ bookId }).exec();
     const experts = await this.expertsService.findByIds(
-      unique(indications.map(({ expertId }) => expertId)),
+      unique(reviews.map(({ expertId }) => expertId)),
     );
-    const recommendationCount = indications.filter(({ editoria }) =>
-      isRecommendation(editoria),
-    ).length;
 
-    await this.booksService.setIndicationSnapshot(bookId, {
-      editorias: [...new Set(indications.map(({ editoria }) => editoria))],
-      expertSlugs: experts.map(({ slug }) => slug),
-      recommendationCount,
-      disrecommendationCount: indications.length - recommendationCount,
+    await this.booksService.setReviewSnapshot(bookId, {
+      reviewerSlugs: experts.map(({ slug }) => slug),
+      reviewCount: reviews.length,
     });
   }
 
@@ -271,7 +230,7 @@ export class ReviewsService {
   ): Promise<ReviewResponse[]> {
     const [experts, books] = await Promise.all([
       this.resolveExperts(reviews.map(({ expertId }) => expertId)),
-      this.resolveBooks(reviews.flatMap(({ indications }) => indications)),
+      this.resolveBooks(reviews.map(({ bookId }) => bookId)),
     ]);
 
     return reviews.map((review) => toReviewResponse(review, experts, books));
@@ -285,12 +244,10 @@ export class ReviewsService {
   }
 
   private async resolveBooks(
-    indications: ReviewIndication[],
-  ): Promise<Map<string, IndicatedBook>> {
-    const books = await this.booksService.findByIds(
-      unique(bookIdsOf(indications)),
-    );
-    return new Map(books.map((book) => [book._id, toIndicatedBook(book)]));
+    bookIds: string[],
+  ): Promise<Map<string, BookSummary>> {
+    const books = await this.booksService.findByIds(unique(bookIds));
+    return new Map(books.map((book) => [book._id, toBookSummary(book)]));
   }
 
   private async generateUniqueSlug(title: string): Promise<string> {

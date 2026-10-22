@@ -1,12 +1,5 @@
 import { z } from 'zod';
-
-function toArray(value: unknown): string[] | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  return Array.isArray(value) ? (value as string[]) : [value as string];
-}
+import { toArray } from 'src/common/lib/to-array';
 
 export const listReviewsQuerySchema = z.object({
   experts: z.preprocess(toArray, z.array(z.string()).optional()),

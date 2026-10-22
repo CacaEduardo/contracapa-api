@@ -44,15 +44,16 @@ describe('ReviewsService', () => {
   };
 
   const mockBooksService = {
+    findById: jest.fn(),
     findByIds: jest.fn(),
-    setIndicationSnapshot: jest.fn(),
+    setReviewSnapshot: jest.fn(),
   };
 
   const mockExpertsService = {
     findById: jest.fn(),
     findByIds: jest.fn(),
     findBySlugs: jest.fn(),
-    setReviewCount: jest.fn(),
+    setCounter: jest.fn(),
   };
 
   const bookResponse = (id: string, active = true) => ({
@@ -76,24 +77,20 @@ describe('ReviewsService', () => {
     _id: { toString: () => 'review-1' },
     slug: 'titulo',
     expertId: EXPERT,
+    bookId: BOOK_A,
     editorialTitle: 'Título',
     excerpt: 'Resumo',
     content: '<p>Conteúdo</p>',
-    indications: [
-      { editoria: 'market' as const, bookId: BOOK_A },
-      { editoria: 'do_not_read' as const, bookId: BOOK_B },
-    ],
     publishedAt: new Date('2024-01-01'),
     weekly: false,
-    podcast: {},
   };
 
   const dto = {
     expertId: EXPERT,
+    bookId: BOOK_A,
     editorialTitle: 'Título',
     excerpt: 'Resumo',
     content: '<p>Conteúdo</p>',
-    indications: review.indications,
   };
 
   beforeEach(async () => {
@@ -113,6 +110,7 @@ describe('ReviewsService', () => {
     mockExpertsService.findByIds.mockImplementation((ids: string[]) =>
       Promise.resolve(ids.includes(EXPERT) ? [publicExpert] : []),
     );
+    mockBooksService.findById.mockResolvedValue({ _id: BOOK_A });
     mockBooksService.findByIds.mockImplementation((ids: string[]) =>
       Promise.resolve(ids.map((id) => bookResponse(id))),
     );
@@ -132,28 +130,13 @@ describe('ReviewsService', () => {
       expect(mockReviewModel.create).not.toHaveBeenCalled();
     });
 
-    it('deve lançar NotFoundException se algum livro indicado não existir', async () => {
-      mockBooksService.findByIds.mockResolvedValue([bookResponse(BOOK_A)]);
-
-      await expect(service.create(dto)).rejects.toThrow(
+    it('deve lançar NotFoundException se o livro não existir', async () => {
+      mockBooksService.findById.mockRejectedValue(
         new NotFoundException('Livro não encontrado'),
       );
+
+      await expect(service.create(dto)).rejects.toThrow(NotFoundException);
       expect(mockReviewModel.create).not.toHaveBeenCalled();
-    });
-
-    it('deve aceitar o mesmo livro em editorias diferentes', async () => {
-      mockReviewModel.create.mockResolvedValue(review);
-
-      await service.create({
-        ...dto,
-        indications: [
-          { editoria: 'market', bookId: BOOK_A },
-          { editoria: 'off_market', bookId: BOOK_A },
-        ],
-      });
-
-      expect(mockBooksService.findByIds).toHaveBeenCalledWith([BOOK_A]);
-      expect(mockReviewModel.create).toHaveBeenCalled();
     });
 
     it('deve gerar slug pelo título, sufixando quando já existir', async () => {
@@ -168,37 +151,29 @@ describe('ReviewsService', () => {
         expect.objectContaining({
           slug: 'otimo-titulo-2',
           expertId: EXPERT,
-          indications: dto.indications,
+          bookId: BOOK_A,
           weekly: false,
         }),
       );
     });
 
-    it('deve recalcular contadores dos livros e do especialista', async () => {
+    it('deve recalcular o snapshot de resenhas do livro e do especialista', async () => {
       mockReviewModel.create.mockResolvedValue(review);
+      mockReviewModel.find.mockReturnValue(queryOf([review, review]));
       mockReviewModel.countDocuments.mockReturnValue(execOf(3));
 
       await service.create(dto);
 
-      expect(mockBooksService.setIndicationSnapshot).toHaveBeenCalledWith(
-        BOOK_A,
-        {
-          editorias: ['market'],
-          expertSlugs: ['ana-souza'],
-          recommendationCount: 1,
-          disrecommendationCount: 0,
-        },
+      expect(mockReviewModel.find).toHaveBeenCalledWith({ bookId: BOOK_A });
+      expect(mockBooksService.setReviewSnapshot).toHaveBeenCalledWith(BOOK_A, {
+        reviewerSlugs: ['ana-souza'],
+        reviewCount: 2,
+      });
+      expect(mockExpertsService.setCounter).toHaveBeenCalledWith(
+        EXPERT,
+        'reviewCount',
+        3,
       );
-      expect(mockBooksService.setIndicationSnapshot).toHaveBeenCalledWith(
-        BOOK_B,
-        {
-          editorias: ['do_not_read'],
-          expertSlugs: ['ana-souza'],
-          recommendationCount: 0,
-          disrecommendationCount: 1,
-        },
-      );
-      expect(mockExpertsService.setReviewCount).toHaveBeenCalledWith(EXPERT, 3);
     });
 
     it('deve desmarcar a resenha da semana anterior ao marcar a nova', async () => {
@@ -212,20 +187,16 @@ describe('ReviewsService', () => {
       );
     });
 
-    it('deve devolver a resenha com especialista e livros resolvidos', async () => {
+    it('deve devolver a resenha com especialista e livro resolvidos', async () => {
       mockReviewModel.create.mockResolvedValue(review);
 
       const result = await service.create(dto);
 
       expect(result.expert).toEqual(publicExpert);
-      expect(result.indications).toMatchObject([
-        {
-          editoria: 'market',
-          bookId: BOOK_A,
-          book: { _id: BOOK_A, active: true },
-        },
-        { editoria: 'do_not_read', bookId: BOOK_B, book: { _id: BOOK_B } },
-      ]);
+      expect(result).toMatchObject({
+        bookId: BOOK_A,
+        book: { _id: BOOK_A, slug: `livro-${BOOK_A}`, active: true },
+      });
     });
   });
 
@@ -257,36 +228,19 @@ describe('ReviewsService', () => {
         pageSize: 10,
       });
 
-      expect(mockExpertsService.findBySlugs).toHaveBeenCalledWith([
-        'ana-souza',
-        'bruno-lima',
-      ]);
       expect(mockReviewModel.find).toHaveBeenCalledWith({
         expertId: { $in: [EXPERT, other] },
       });
     });
 
-    it('não deve devolver resenhas quando nenhum especialista existir', async () => {
-      mockExpertsService.findBySlugs.mockResolvedValue([]);
-
-      await service.findAll({ experts: ['ninguem'], page: 1, pageSize: 10 });
-
-      expect(mockReviewModel.find).toHaveBeenCalledWith({
-        expertId: { $in: [] },
-      });
-    });
-
     it('deve manter livro inativo na resenha, sinalizado como inativo', async () => {
       mockBooksService.findByIds.mockImplementation((ids: string[]) =>
-        Promise.resolve(ids.map((id) => bookResponse(id, id !== BOOK_B))),
+        Promise.resolve(ids.map((id) => bookResponse(id, false))),
       );
 
       const { items } = await service.findAll({ page: 1, pageSize: 10 });
 
-      expect(items[0].indications[1].book).toMatchObject({
-        _id: BOOK_B,
-        active: false,
-      });
+      expect(items[0].book).toMatchObject({ _id: BOOK_A, active: false });
     });
   });
 
@@ -301,37 +255,16 @@ describe('ReviewsService', () => {
   });
 
   describe('findByBookId', () => {
-    it('deve devolver cada indicação do livro com resenha e especialista', async () => {
-      mockReviewModel.find.mockReturnValue(
-        queryOf([
-          {
-            ...review,
-            indications: [
-              { editoria: 'market', bookId: BOOK_A },
-              { editoria: 'off_market', bookId: BOOK_A },
-              { editoria: 'do_not_read', bookId: BOOK_B },
-            ],
-          },
-        ]),
-      );
+    it('deve devolver as resenhas do livro, mais recentes primeiro', async () => {
+      const query = queryOf([review]);
+      mockReviewModel.find.mockReturnValue(query);
 
       const result = await service.findByBookId(BOOK_A);
 
-      expect(mockReviewModel.find).toHaveBeenCalledWith({
-        'indications.bookId': BOOK_A,
-      });
-      expect(result).toHaveLength(2);
+      expect(mockReviewModel.find).toHaveBeenCalledWith({ bookId: BOOK_A });
+      expect(query.sort).toHaveBeenCalledWith({ publishedAt: -1 });
       expect(result).toMatchObject([
-        {
-          editoria: 'market',
-          review: { slug: 'titulo' },
-          expert: publicExpert,
-        },
-        {
-          editoria: 'off_market',
-          review: { slug: 'titulo' },
-          expert: publicExpert,
-        },
+        { slug: 'titulo', expert: publicExpert, book: { _id: BOOK_A } },
       ]);
     });
   });
@@ -345,29 +278,29 @@ describe('ReviewsService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('deve manter o slug e recalcular livros antigos e novos', async () => {
+    it('deve manter o slug e recalcular o livro antigo e o novo', async () => {
       mockReviewModel.findById.mockReturnValue(execOf(review));
-      const nextIndications = [{ editoria: 'market' as const, bookId: BOOK_B }];
       mockReviewModel.findByIdAndUpdate.mockReturnValue(
-        execOf({ ...review, indications: nextIndications }),
+        execOf({ ...review, bookId: BOOK_B }),
       );
       mockReviewModel.find.mockReturnValue(queryOf([]));
 
       await service.update('review-1', {
         editorialTitle: 'Outro título',
-        indications: nextIndications,
+        bookId: BOOK_B,
       });
 
+      expect(mockBooksService.findById).toHaveBeenCalledWith(BOOK_B);
       expect(mockReviewModel.findByIdAndUpdate).toHaveBeenCalledWith(
         'review-1',
-        { editorialTitle: 'Outro título', indications: nextIndications },
+        { editorialTitle: 'Outro título', bookId: BOOK_B },
         { new: true },
       );
-      expect(mockBooksService.setIndicationSnapshot).toHaveBeenCalledWith(
-        BOOK_A,
-        expect.objectContaining({ recommendationCount: 0 }),
-      );
-      expect(mockBooksService.setIndicationSnapshot).toHaveBeenCalledWith(
+      expect(mockBooksService.setReviewSnapshot).toHaveBeenCalledWith(BOOK_A, {
+        reviewerSlugs: [],
+        reviewCount: 0,
+      });
+      expect(mockBooksService.setReviewSnapshot).toHaveBeenCalledWith(
         BOOK_B,
         expect.anything(),
       );
@@ -383,13 +316,21 @@ describe('ReviewsService', () => {
       await service.update('review-1', { expertId: OTHER });
 
       expect(mockExpertsService.findById).toHaveBeenCalledWith(OTHER);
-      expect(mockExpertsService.setReviewCount).toHaveBeenCalledWith(EXPERT, 1);
-      expect(mockExpertsService.setReviewCount).toHaveBeenCalledWith(OTHER, 1);
+      expect(mockExpertsService.setCounter).toHaveBeenCalledWith(
+        EXPERT,
+        'reviewCount',
+        1,
+      );
+      expect(mockExpertsService.setCounter).toHaveBeenCalledWith(
+        OTHER,
+        'reviewCount',
+        1,
+      );
     });
   });
 
   describe('remove', () => {
-    it('deve excluir e recalcular livros e especialista', async () => {
+    it('deve excluir e recalcular livro e especialista', async () => {
       mockReviewModel.findById.mockReturnValue(execOf(review));
       mockReviewModel.findByIdAndDelete.mockReturnValue(execOf(review));
       mockReviewModel.find.mockReturnValue(queryOf([]));
@@ -400,16 +341,15 @@ describe('ReviewsService', () => {
       expect(mockReviewModel.findByIdAndDelete).toHaveBeenCalledWith(
         'review-1',
       );
-      expect(mockBooksService.setIndicationSnapshot).toHaveBeenCalledWith(
-        BOOK_A,
-        {
-          editorias: [],
-          expertSlugs: [],
-          recommendationCount: 0,
-          disrecommendationCount: 0,
-        },
+      expect(mockBooksService.setReviewSnapshot).toHaveBeenCalledWith(BOOK_A, {
+        reviewerSlugs: [],
+        reviewCount: 0,
+      });
+      expect(mockExpertsService.setCounter).toHaveBeenCalledWith(
+        EXPERT,
+        'reviewCount',
+        0,
       );
-      expect(mockExpertsService.setReviewCount).toHaveBeenCalledWith(EXPERT, 0);
     });
   });
 

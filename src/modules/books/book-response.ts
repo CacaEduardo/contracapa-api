@@ -22,6 +22,7 @@ export type BookResponse = {
   editorias: Editoria[];
   recommendationCount: number;
   disrecommendationCount: number;
+  reviewCount: number;
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -48,7 +49,19 @@ export function toBookResponse(
     editorias: book.editorias,
     recommendationCount: book.recommendationCount,
     disrecommendationCount: book.disrecommendationCount,
+    reviewCount: book.reviewCount,
     createdAt: book.createdAt,
     updatedAt: book.updatedAt,
   };
+}
+
+// Livro citado por resenhas e recomendações; `active` permite ao leitor esconder o link.
+export type BookSummary = Pick<
+  BookResponse,
+  '_id' | 'slug' | 'title' | 'author' | 'coverSrc' | 'active'
+>;
+
+export function toBookSummary(book: BookResponse): BookSummary {
+  const { _id, slug, title, author, coverSrc, active } = book;
+  return { _id, slug, title, author, coverSrc, active };
 }

@@ -4,11 +4,13 @@ import { getConnectionToken } from '@nestjs/mongoose';
 import type { Connection } from 'mongoose';
 import { AppModule } from '../src/app.module';
 
-// Migração única para o modelo de resenhas por especialista: descarta as resenhas
-// com veredito e prepara livros e especialistas com os novos campos. Remova este
-// script depois de executá-lo em todos os ambientes.
+// Migração única para resenhas de um livro + recomendações em episódios: descarta
+// resenhas, episódios e recomendações e zera os snapshots de livros e
+// especialistas. Remova este script depois de executá-lo em todos os ambientes.
+const DROPPED_COLLECTIONS = ['reviews', 'episodes', 'recommendations'];
+
 async function bootstrap() {
-  const logger = new Logger('ResetReviews');
+  const logger = new Logger('ResetRecommendations');
   const app = await NestFactory.createApplicationContext(AppModule);
 
   try {
@@ -19,13 +21,11 @@ async function bootstrap() {
       throw new Error('Conexão com o banco indisponível');
     }
 
-    const hasReviews = await db
-      .listCollections({ name: 'reviews' })
-      .hasNext();
-
-    if (hasReviews) {
-      await db.dropCollection('reviews');
-      logger.log('Coleção de resenhas descartada.');
+    for (const name of DROPPED_COLLECTIONS) {
+      if (await db.listCollections({ name }).hasNext()) {
+        await db.dropCollection(name);
+        logger.log(`Coleção ${name} descartada.`);
+      }
     }
 
     await connection.syncIndexes();
@@ -33,34 +33,26 @@ async function bootstrap() {
     const books = await db.collection('books').updateMany(
       {},
       {
-        $unset: {
-          reviewId: '',
-          reviewVerdict: '',
-          reviewWeekly: '',
-          reviewPublishedAt: '',
-        },
+        $unset: { expertSlugs: '' },
         $set: {
           editorias: [],
-          expertSlugs: [],
+          recommenderSlugs: [],
           recommendationCount: 0,
           disrecommendationCount: 0,
+          recommendedAt: {},
+          reviewerSlugs: [],
+          reviewCount: 0,
         },
       },
     );
-    await db
-      .collection('books')
-      .updateMany(
-        { active: { $exists: false } },
-        { $set: { active: true, description: null } },
-      );
     logger.log(`Livros atualizados: ${books.modifiedCount}.`);
 
     const experts = await db
       .collection('experts')
-      .updateMany({}, { $set: { reviewCount: 0 } });
-    await db
-      .collection('experts')
-      .updateMany({ active: { $exists: false } }, { $set: { active: true } });
+      .updateMany(
+        {},
+        { $set: { reviewCount: 0, episodeCount: 0, recommendationCount: 0 } },
+      );
     logger.log(`Especialistas atualizados: ${experts.modifiedCount}.`);
   } finally {
     await app.close();

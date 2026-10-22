@@ -7,14 +7,17 @@ import { slugify } from '../src/common/lib/slugify';
 import { BooksService } from '../src/modules/books/books.service';
 import type { Editoria } from '../src/modules/books/editorias';
 import { CategoriesService } from '../src/modules/categories/categories.service';
+import { EpisodesService } from '../src/modules/episodes/episodes.service';
 import { ExpertsService } from '../src/modules/experts/experts.service';
+import { RecommendationsService } from '../src/modules/recommendations/recommendations.service';
 import { ReviewsService } from '../src/modules/reviews/reviews.service';
 import {
   Review,
   type ReviewDocument,
 } from '../src/modules/reviews/schemas/review.schema';
 
-// Dados de demonstração: categorias, 50 livros, 50 especialistas e 50 resenhas.
+// Dados de demonstração: categorias, 50 livros, 50 especialistas, 50 resenhas,
+// 25 episódios (dois convidados cada) e as recomendações feitas neles.
 // Especialistas usam e-mails @example.com, que servem de marcador para não
 // rodar duas vezes e para limpar depois.
 
@@ -493,7 +496,7 @@ const OFF_MARKET_POOL = [
   0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
   22, 23, 24, 41, 44, 45, 46, 47,
 ];
-const DO_NOT_READ_POOL = [35, 36, 37, 38, 28, 41, 21, 6, 33, 39];
+const DISRECOMMENDED_POOL = [35, 36, 37, 38, 28, 41, 21, 6, 33, 39];
 
 const FIRST_NAMES = [
   'Ana',
@@ -583,28 +586,40 @@ const EDITORIA_TEXT: Record<Editoria, (book: SeedBook) => string> = {
     `<p>Para quem precisa entender o jogo agora, ${book.title}, de ${book.author}, é leitura obrigatória. O livro organiza ideias que circulam em reuniões e conselhos e dá vocabulário para discuti-las com precisão.</p>`,
   off_market: (book) =>
     `<p>Fora do radar do mercado, ${book.title}, de ${book.author}, entrega o que nenhum manual entrega: repertório, silêncio e uma forma diferente de olhar para as pessoas. É o livro que eu daria a quem acha que já leu tudo.</p>`,
-  do_not_read: (book) =>
+  disrecommended: (book) =>
     `<p>Já ${book.title}, de ${book.author}, fica na estante. A promessa é maior do que o conteúdo, e o tempo gasto rende mais em qualquer outra leitura desta lista.</p>`,
 };
 
 const EXCERPT_TEMPLATES = [
   'Uma conversa sobre o que vale o tempo de quem lê pouco e decide muito.',
-  'Três indicações, uma provocação: nem todo livro famoso merece a sua próxima semana.',
-  'Uma seleção que mistura o que o mercado discute com o que ele deveria ler.',
+  'Uma provocação: nem todo livro famoso merece a sua próxima semana.',
+  'O que o mercado discute e o que ele deveria ler.',
   'O que ler, o que reler e o que deixar de lado, com argumentos.',
   'Leituras escolhidas para atravessar a próxima estação com mais repertório.',
 ];
 
 const pick = <T>(pool: T[], index: number) => pool[index % pool.length];
 
-// Combinações de editorias alternadas para variar a quantidade de indicações.
+// Combinações de editorias alternadas para variar a quantidade de recomendações.
 const EDITORIA_PATTERNS: Editoria[][] = [
-  ['market', 'off_market', 'do_not_read'],
+  ['market', 'off_market', 'disrecommended'],
   ['market', 'off_market'],
   ['off_market'],
-  ['market', 'do_not_read'],
-  ['off_market', 'do_not_read'],
+  ['market', 'disrecommended'],
+  ['off_market', 'disrecommended'],
 ];
+
+const EDITORIA_POOLS: Record<Editoria, number[]> = {
+  market: MARKET_POOL,
+  off_market: OFF_MARKET_POOL,
+  disrecommended: DISRECOMMENDED_POOL,
+};
+
+const PODCASTS = ['Estante Aberta', 'Market Makers', 'Conversa de Mercado'];
+
+// IDs fictícios no formato do YouTube (11 caracteres); a thumb não carrega.
+const seedVideoId = (index: number) =>
+  `seedEp${String(index + 1).padStart(5, '0')}`;
 
 async function bootstrap() {
   const logger = new Logger('SeedCatalog');
@@ -616,6 +631,8 @@ async function bootstrap() {
     const booksService = app.get(BooksService);
     const expertsService = app.get(ExpertsService);
     const reviewsService = app.get(ReviewsService);
+    const episodesService = app.get(EpisodesService);
+    const recommendationsService = app.get(RecommendationsService);
     const reviewModel = app.get<Model<ReviewDocument>>(
       getModelToken(Review.name),
     );
@@ -626,7 +643,7 @@ async function bootstrap() {
 
     if (unmigrated > 0) {
       logger.error(
-        'Banco ainda no modelo antigo. Rode `yarn reset:reviews` antes do seed.',
+        'Banco ainda no modelo antigo. Rode `yarn reset:recommendations` antes do seed.',
       );
       return;
     }
@@ -708,39 +725,18 @@ async function bootstrap() {
 
     const now = Date.now();
     for (let index = 0; index < 50; index += 1) {
-      const editorias = pick(EDITORIA_PATTERNS, index);
-      const pools: Record<Editoria, number[]> = {
-        market: MARKET_POOL,
-        off_market: OFF_MARKET_POOL,
-        do_not_read: DO_NOT_READ_POOL,
-      };
-      const indications = editorias.map((editoria, position) => ({
-        editoria,
-        bookIndex: pick(pools[editoria], index * 7 + position * 3),
-      }));
-      const [lead] = indications;
-      const leadBook = BOOKS[lead.bookIndex];
-      const title = pick(TITLE_TEMPLATES, index)(leadBook.title);
+      const editoria = pick(pick(EDITORIA_PATTERNS, index), index);
+      const bookIndex = pick(EDITORIA_POOLS[editoria], index * 7);
+      const book = BOOKS[bookIndex];
+      const title = pick(TITLE_TEMPLATES, index)(book.title);
 
       const review = await reviewsService.create({
         expertId: expertIds[index],
+        bookId: bookIds[bookIndex],
         editorialTitle: title,
         excerpt: pick(EXCERPT_TEMPLATES, index),
-        content: [
-          `<h2>${title}</h2>`,
-          ...indications.map(({ editoria, bookIndex }) =>
-            EDITORIA_TEXT[editoria](BOOKS[bookIndex]),
-          ),
-        ].join(''),
-        indications: indications.map(({ editoria, bookIndex }) => ({
-          editoria,
-          bookId: bookIds[bookIndex],
-        })),
+        content: `<h2>${title}</h2>${EDITORIA_TEXT[editoria](book)}`,
         weekly: index === 49,
-        podcast: {
-          spotify: `https://open.spotify.com/episode/contracapa-${index + 1}`,
-          youtube: `https://www.youtube.com/watch?v=contracapa${index + 1}`,
-        },
       });
 
       // Espalha as datas de publicação pelas últimas 50 semanas.
@@ -752,6 +748,44 @@ async function bootstrap() {
         .exec();
     }
     logger.log('Resenhas criadas: 50 (a última é a resenha da semana).');
+
+    let recommendationCount = 0;
+    for (let index = 0; index < 25; index += 1) {
+      const guests = [expertIds[index * 2], expertIds[index * 2 + 1]];
+      const podcast = pick(PODCASTS, index);
+      const videoId = seedVideoId(index);
+
+      const episode = await episodesService.create({
+        youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        title: `${podcast} #${100 + index}`,
+        channelName: podcast,
+        publishedAt: new Date(now - (24 - index) * 2 * WEEK_MS),
+        expertIds: guests,
+      });
+
+      for (const [position, expertId] of guests.entries()) {
+        const editorias = pick(EDITORIA_PATTERNS, index + position);
+
+        for (const [offset, editoria] of editorias.entries()) {
+          await recommendationsService.create({
+            episodeId: episode._id,
+            expertId,
+            bookId:
+              bookIds[
+                pick(
+                  EDITORIA_POOLS[editoria],
+                  index * 7 + position * 5 + offset * 3,
+                )
+              ],
+            editoria,
+          });
+          recommendationCount += 1;
+        }
+      }
+    }
+    logger.log(
+      `Episódios criados: 25; recomendações criadas: ${recommendationCount}.`,
+    );
   } finally {
     await app.close();
   }

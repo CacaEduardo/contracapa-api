@@ -22,7 +22,11 @@ import type {
 } from 'src/modules/books/dto/list-books-query.dto';
 import type { UpdateBookDto } from 'src/modules/books/dto/update-book.dto';
 import type { Editoria } from 'src/modules/books/editorias';
-import { Book, type BookDocument } from 'src/modules/books/schemas/book.schema';
+import {
+  Book,
+  type BookDocument,
+  type BookRecommendedAt,
+} from 'src/modules/books/schemas/book.schema';
 import { CategoriesService } from 'src/modules/categories/categories.service';
 import { StorageService } from 'src/modules/storage/storage.service';
 import { WishlistsService } from 'src/modules/wishlists/wishlists.service';
@@ -35,11 +39,19 @@ export type ListBooksResult = {
   pageSize: number;
 };
 
-export type IndicationSnapshot = {
+// Escrito só pelo RecommendationsService.
+export type RecommendationSnapshot = {
   editorias: Editoria[];
-  expertSlugs: string[];
+  recommenderSlugs: string[];
   recommendationCount: number;
   disrecommendationCount: number;
+  recommendedAt: BookRecommendedAt;
+};
+
+// Escrito só pelo ReviewsService.
+export type ReviewSnapshot = {
+  reviewerSlugs: string[];
+  reviewCount: number;
 };
 
 type CatalogQuery = Omit<ListBooksQueryDto, 'pageSize'> & { pageSize: number };
@@ -48,12 +60,12 @@ type BookQueryFilter = {
   active?: boolean;
   categorySlugs?: { $in: string[] };
   editorias?: { $in: Editoria[] };
-  expertSlugs?: { $in: string[] };
-  $or?: Record<string, unknown>[];
+  reviewCount?: { $gt: number };
+  $and?: Record<string, unknown>[];
 };
 
 const IN_USE_MESSAGE =
-  'Este livro está indicado em resenhas. Inative-o para tirá-lo do catálogo.';
+  'Este livro tem resenhas ou recomendações. Inative-o para tirá-lo do catálogo.';
 
 const RELATED_BOOKS_LIMIT = 12;
 
@@ -204,7 +216,12 @@ export class BooksService {
   async remove(id: string): Promise<void> {
     const book = await this.findById(id);
 
-    if (book.recommendationCount + book.disrecommendationCount > 0) {
+    if (
+      book.reviewCount +
+        book.recommendationCount +
+        book.disrecommendationCount >
+      0
+    ) {
       throw new ConflictException(IN_USE_MESSAGE);
     }
 
@@ -265,17 +282,18 @@ export class BooksService {
     return this.toResponse(updated);
   }
 
-  async setIndicationSnapshot(
+  async setRecommendationSnapshot(
     bookId: string,
-    snapshot: IndicationSnapshot,
+    snapshot: RecommendationSnapshot,
   ): Promise<void> {
-    try {
-      await this.bookModel.findByIdAndUpdate(bookId, snapshot).exec();
-    } catch (error) {
-      this.logger.warn(
-        `Falha ao sincronizar indicações do livro: bookId=${bookId} ${String(error)}`,
-      );
-    }
+    await this.setSnapshot(bookId, snapshot, 'recomendações');
+  }
+
+  async setReviewSnapshot(
+    bookId: string,
+    snapshot: ReviewSnapshot,
+  ): Promise<void> {
+    await this.setSnapshot(bookId, snapshot, 'resenhas');
   }
 
   async count(): Promise<number> {
@@ -288,9 +306,11 @@ export class BooksService {
   ): Promise<ListBooksResult> {
     const filter: BookQueryFilter = { ...baseFilter };
 
+    const conditions: Record<string, unknown>[] = [];
+
     if (query.q) {
       const regex = new RegExp(escapeRegExp(query.q), 'i');
-      filter.$or = [{ title: regex }, { author: regex }];
+      conditions.push({ $or: [{ title: regex }, { author: regex }] });
     }
 
     if (query.categories?.length) {
@@ -301,16 +321,25 @@ export class BooksService {
       filter.editorias = { $in: query.editorias };
     }
 
+    // Especialista filtra tanto o que ele recomendou quanto o que resenhou.
     if (query.experts?.length) {
-      filter.expertSlugs = { $in: query.experts };
+      conditions.push({
+        $or: [
+          { recommenderSlugs: { $in: query.experts } },
+          { reviewerSlugs: { $in: query.experts } },
+        ],
+      });
     }
 
-    const sortOption: Record<string, 1 | -1> =
-      query.sort === 'az'
-        ? { title: 1 }
-        : query.sort === 'za'
-          ? { title: -1 }
-          : { createdAt: -1 };
+    if (query.hasReviews) {
+      filter.reviewCount = { $gt: 0 };
+    }
+
+    if (conditions.length > 0) {
+      filter.$and = conditions;
+    }
+
+    const sortOption = this.sortOptionFor(query);
 
     const total = await this.bookModel.countDocuments(filter).exec();
     const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
@@ -329,6 +358,34 @@ export class BooksService {
       page: query.page,
       pageSize: query.pageSize,
     };
+  }
+
+  private sortOptionFor(query: CatalogQuery): Record<string, 1 | -1> {
+    switch (query.sort) {
+      case 'az':
+        return { title: 1 };
+      case 'za':
+        return { title: -1 };
+      case 'recomendados':
+        // O DTO garante exatamente uma editoria neste caso.
+        return { [`recommendedAt.${query.editorias![0]}`]: -1, createdAt: -1 };
+      default:
+        return { createdAt: -1 };
+    }
+  }
+
+  private async setSnapshot(
+    bookId: string,
+    snapshot: RecommendationSnapshot | ReviewSnapshot,
+    origin: string,
+  ): Promise<void> {
+    try {
+      await this.bookModel.findByIdAndUpdate(bookId, snapshot).exec();
+    } catch (error) {
+      this.logger.warn(
+        `Falha ao sincronizar ${origin} do livro: bookId=${bookId} ${String(error)}`,
+      );
+    }
   }
 
   private async assertCategoriesExist(slugs: string[]): Promise<void> {

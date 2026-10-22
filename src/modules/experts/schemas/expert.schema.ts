@@ -58,6 +58,12 @@ export class Expert {
   @Prop({ default: 0 })
   reviewCount!: number;
 
+  @Prop({ default: 0 })
+  episodeCount!: number;
+
+  @Prop({ default: 0 })
+  recommendationCount!: number;
+
   createdAt?: Date;
   updatedAt?: Date;
 }
