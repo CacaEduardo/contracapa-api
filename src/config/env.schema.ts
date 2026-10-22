@@ -17,7 +17,7 @@ export const envSchema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string().min(1),
   AWS_DEFAULT_REGION: z.string().min(1),
   BUCKET_NAME: z.string().min(1),
-  RESEND_API_KEY: z.string().optional(),
+  SENDGRID_API_KEY: z.string().optional(),
   MAIL_FROM_EMAIL: z.string().optional(),
   MAIL_FROM_NAME: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
