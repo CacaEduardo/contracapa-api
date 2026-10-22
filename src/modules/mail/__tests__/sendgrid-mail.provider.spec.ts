@@ -1,20 +1,24 @@
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import { ResendMailProvider } from 'src/modules/mail/providers/resend-mail.provider';
+import { SendGridMailProvider } from 'src/modules/mail/providers/sendgrid-mail.provider';
 
 const sendMock = jest.fn();
+const setApiKeyMock = jest.fn();
 
-jest.mock('resend', () => ({
-  Resend: jest.fn().mockImplementation(() => ({
-    emails: { send: sendMock },
-  })),
+jest.mock('@sendgrid/mail', () => ({
+  setApiKey: (apiKey: string) => {
+    setApiKeyMock(apiKey);
+  },
+  send: async (data: unknown) => {
+    await sendMock(data);
+  },
 }));
 
-describe('ResendMailProvider', () => {
+describe('SendGridMailProvider', () => {
   function buildProvider(values: Record<string, string | undefined>) {
     return Test.createTestingModule({
       providers: [
-        ResendMailProvider,
+        SendGridMailProvider,
         {
           provide: ConfigService,
           useValue: { get: (key: string) => values[key] },
@@ -27,14 +31,14 @@ describe('ResendMailProvider', () => {
     jest.clearAllMocks();
   });
 
-  it('deve enviar e-mail via Resend com from configurado', async () => {
+  it('deve enviar e-mail via SendGrid com from configurado', async () => {
     const module: TestingModule = await buildProvider({
-      RESEND_API_KEY: 're_test_key',
+      SENDGRID_API_KEY: 'SG.test',
       MAIL_FROM_EMAIL: 'contato@bibliotecadomercado.com.br',
       MAIL_FROM_NAME: 'Biblioteca do Mercado',
     });
-    const provider = module.get(ResendMailProvider);
-    sendMock.mockResolvedValue({ data: { id: '1' }, error: null });
+    const provider = module.get(SendGridMailProvider);
+    sendMock.mockResolvedValue([{ statusCode: 202 }, {}]);
 
     await provider.send({
       to: 'leitor@example.com',
@@ -42,8 +46,12 @@ describe('ResendMailProvider', () => {
       html: '<p>Corpo</p>',
     });
 
+    expect(setApiKeyMock).toHaveBeenCalledWith('SG.test');
     expect(sendMock).toHaveBeenCalledWith({
-      from: 'Biblioteca do Mercado <contato@bibliotecadomercado.com.br>',
+      from: {
+        email: 'contato@bibliotecadomercado.com.br',
+        name: 'Biblioteca do Mercado',
+      },
       to: 'leitor@example.com',
       subject: 'Assunto',
       html: '<p>Corpo</p>',
@@ -52,10 +60,10 @@ describe('ResendMailProvider', () => {
 
   it('deve usar remetente padrão quando MAIL_FROM_* não estiver configurado', async () => {
     const module: TestingModule = await buildProvider({
-      RESEND_API_KEY: 're_test_key',
+      SENDGRID_API_KEY: 'SG.test',
     });
-    const provider = module.get(ResendMailProvider);
-    sendMock.mockResolvedValue({ data: { id: '1' }, error: null });
+    const provider = module.get(SendGridMailProvider);
+    sendMock.mockResolvedValue([{ statusCode: 202 }, {}]);
 
     await provider.send({
       to: 'leitor@example.com',
@@ -65,14 +73,17 @@ describe('ResendMailProvider', () => {
 
     expect(sendMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: 'Biblioteca do Mercado <onboarding@resend.dev>',
+        from: {
+          email: 'contato@bibliotecadomercado.com.br',
+          name: 'Biblioteca do Mercado',
+        },
       }),
     );
   });
 
-  it('não deve lançar quando RESEND_API_KEY não estiver configurada', async () => {
+  it('não deve lançar quando SENDGRID_API_KEY não estiver configurada', async () => {
     const module: TestingModule = await buildProvider({});
-    const provider = module.get(ResendMailProvider);
+    const provider = module.get(SendGridMailProvider);
 
     await expect(
       provider.send({
@@ -82,17 +93,22 @@ describe('ResendMailProvider', () => {
       }),
     ).resolves.toBeUndefined();
 
+    expect(setApiKeyMock).not.toHaveBeenCalled();
     expect(sendMock).not.toHaveBeenCalled();
   });
 
-  it('não deve lançar quando o Resend retornar erro', async () => {
+  it('não deve lançar quando o SendGrid retornar erro', async () => {
     const module: TestingModule = await buildProvider({
-      RESEND_API_KEY: 're_test_key',
+      SENDGRID_API_KEY: 'SG.test',
     });
-    const provider = module.get(ResendMailProvider);
-    sendMock.mockResolvedValue({
-      data: null,
-      error: { message: 'domínio não verificado' },
+    const provider = module.get(SendGridMailProvider);
+    sendMock.mockRejectedValue({
+      message: 'Forbidden',
+      response: {
+        body: {
+          errors: [{ message: 'remetente não verificado' }],
+        },
+      },
     });
 
     await expect(
