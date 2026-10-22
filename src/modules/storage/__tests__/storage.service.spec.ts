@@ -62,8 +62,8 @@ describe('StorageService', () => {
 
       expect(sendMock).toHaveBeenCalledWith(expect.any(PutObjectCommand));
       expect(result).toEqual({
-        url: 'https://circule-bucket.s3.sa-east-1.amazonaws.com/books/fixed-uuid.jpg',
-        key: 'books/fixed-uuid.jpg',
+        url: 'https://circule-bucket.s3.sa-east-1.amazonaws.com/public/images/books/fixed-uuid.jpg',
+        key: 'public/images/books/fixed-uuid.jpg',
       });
     });
 
@@ -78,7 +78,7 @@ describe('StorageService', () => {
         'books',
       );
 
-      expect(result.key).toBe('books/fixed-uuid.png');
+      expect(result.key).toBe('public/images/books/fixed-uuid.png');
     });
 
     it('deve lançar BadRequestException para mimetype não suportado', async () => {

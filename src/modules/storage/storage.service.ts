@@ -18,6 +18,8 @@ const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
   'image/png': 'png',
 };
 
+const KEY_PREFIX = 'public/images';
+
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
@@ -49,7 +51,7 @@ export class StorageService {
       );
     }
 
-    const key = `${folder}/${randomUUID()}.${extension}`;
+    const key = `${KEY_PREFIX}/${folder}/${randomUUID()}.${extension}`;
 
     await this.client.send(
       new PutObjectCommand({
