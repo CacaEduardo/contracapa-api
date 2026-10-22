@@ -5,14 +5,20 @@ import { SendGridMailProvider } from 'src/modules/mail/providers/sendgrid-mail.p
 const sendMock = jest.fn();
 const setApiKeyMock = jest.fn();
 
-jest.mock('@sendgrid/mail', () => ({
-  setApiKey: (apiKey: string) => {
-    setApiKeyMock(apiKey);
-  },
-  send: async (data: unknown) => {
-    await sendMock(data);
-  },
-}));
+// O pacote exporta uma instância de classe: métodos no prototype, não como props próprias.
+jest.mock('@sendgrid/mail', () => {
+  class MailService {
+    setApiKey(apiKey: string) {
+      setApiKeyMock(apiKey);
+    }
+
+    async send(data: unknown) {
+      await sendMock(data);
+    }
+  }
+
+  return new MailService();
+});
 
 describe('SendGridMailProvider', () => {
   function buildProvider(values: Record<string, string | undefined>) {
