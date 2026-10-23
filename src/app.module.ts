@@ -8,6 +8,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { MongoExceptionFilter } from './common/filters/mongo-exception.filter';
 import { envSchema, Env } from './config/env.schema';
 import { AuthModule } from './modules/auth/auth.module';
+import { BannersModule } from './modules/banners/banners.module';
 import { BooksModule } from './modules/books/books.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { EpisodesModule } from './modules/episodes/episodes.module';
@@ -40,6 +41,7 @@ import { WishlistsModule } from './modules/wishlists/wishlists.module';
     RecommendationsModule,
     StatsModule,
     WishlistsModule,
+    BannersModule,
   ],
   providers: [
     {

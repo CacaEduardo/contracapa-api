@@ -55,7 +55,7 @@ export class ExpertsService {
       email: dto.email,
       company: dto.company ?? null,
       phone: dto.phone ?? null,
-      podcastUrl: dto.podcastUrl ?? null,
+      description: dto.description ?? null,
       socialLinks: dto.socialLinks ?? [],
       slug,
     });
@@ -140,7 +140,7 @@ export class ExpertsService {
       ...(dto.email !== undefined && { email: dto.email }),
       ...(dto.company !== undefined && { company: dto.company }),
       ...(dto.phone !== undefined && { phone: dto.phone }),
-      ...(dto.podcastUrl !== undefined && { podcastUrl: dto.podcastUrl }),
+      ...(dto.description !== undefined && { description: dto.description }),
       ...(dto.socialLinks !== undefined && { socialLinks: dto.socialLinks }),
       ...(dto.active !== undefined && { active: dto.active }),
     };

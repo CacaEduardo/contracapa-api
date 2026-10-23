@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { EXPERT_SOCIAL_NETWORKS } from 'src/modules/experts/schemas/expert.schema';
 
 const MAX_SOCIAL_LINKS = 10;
+const MAX_DESCRIPTION_LENGTH = 600;
 
 const optionalText = z
   .string()
@@ -15,7 +16,16 @@ export const createExpertSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email('E-mail inválido')),
   company: optionalText,
   phone: optionalText,
-  podcastUrl: z.url('URL do podcast inválida').nullable().optional(),
+  description: z
+    .string()
+    .trim()
+    .max(
+      MAX_DESCRIPTION_LENGTH,
+      `A descrição deve ter até ${MAX_DESCRIPTION_LENGTH} caracteres`,
+    )
+    .transform((value) => value || null)
+    .nullable()
+    .optional(),
   socialLinks: z
     .array(
       z.object({

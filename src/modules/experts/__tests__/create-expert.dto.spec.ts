@@ -37,9 +37,16 @@ describe('createExpertSchema', () => {
     ).toBe(false);
   });
 
-  it('rejeita URL de podcast inválida', () => {
+  it('normaliza a descrição vazia para null', () => {
     expect(
-      createExpertSchema.safeParse({ ...valid, podcastUrl: 'podcast' }).success,
+      createExpertSchema.parse({ ...valid, description: '   ' }).description,
+    ).toBeNull();
+  });
+
+  it('rejeita descrição acima de 600 caracteres', () => {
+    expect(
+      createExpertSchema.safeParse({ ...valid, description: 'a'.repeat(601) })
+        .success,
     ).toBe(false);
   });
 

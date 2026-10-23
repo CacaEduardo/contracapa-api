@@ -34,7 +34,7 @@ describe('ExpertsService', () => {
     email: 'ana@exemplo.com',
     company: null,
     phone: null,
-    podcastUrl: null,
+    description: null,
     socialLinks: [],
     avatarSrc: null,
     avatarKey: null,
