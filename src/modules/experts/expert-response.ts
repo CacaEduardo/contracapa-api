@@ -9,7 +9,7 @@ export type PublicExpert = {
   slug: string;
   fullName: string;
   company: string | null;
-  podcastUrl: string | null;
+  description: string | null;
   socialLinks: ExpertSocialLink[];
   avatarSrc: string | null;
   active: boolean;
@@ -31,7 +31,7 @@ export function toPublicExpert(expert: ExpertDocument): PublicExpert {
     slug: expert.slug,
     fullName: expert.fullName,
     company: expert.company,
-    podcastUrl: expert.podcastUrl,
+    description: expert.description,
     socialLinks: expert.socialLinks.map(({ network, url }) => ({
       network,
       url,

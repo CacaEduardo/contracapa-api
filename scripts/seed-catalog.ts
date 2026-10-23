@@ -559,6 +559,24 @@ const COMPANIES = [
   'Livraria Sebo Azul',
   'Podcast Estante Aberta',
 ];
+// Descrição do especialista: trajetória + como ele lê, combinados pelo índice.
+const BIO_CAREERS = [
+  'Há quinze anos trabalha com estratégia de crescimento em empresas de médio porte.',
+  'Lidera times de produto e escreve sobre decisão sob incerteza.',
+  'Atua em fusões e aquisições e investe em empresas em estágio inicial.',
+  'Pesquisa comportamento do consumidor e dá aulas de marketing na pós-graduação.',
+  'Fundou duas empresas de tecnologia e hoje aconselha fundadores.',
+  'Cuida das finanças de empresas familiares em processo de sucessão.',
+  'Trabalha com gestão de pessoas e cultura organizacional.',
+];
+const BIO_READING = [
+  'Lê de tudo, mas volta sempre aos clássicos de gestão.',
+  'No podcast, defende ler menos e reler mais.',
+  'Costuma indicar livros fora da área de negócios.',
+  'Tem pouca paciência para autoajuda corporativa.',
+  'Prefere livros com dados a livros de frases de efeito.',
+];
+
 const SOCIAL_NETWORKS = [
   'instagram',
   'linkedin',
@@ -714,7 +732,7 @@ async function bootstrap() {
         email: `${handle}${SEED_EMAIL_DOMAIN}`,
         company: pick(COMPANIES, index),
         phone: null,
-        podcastUrl: `https://open.spotify.com/show/contracapa-${handle}`,
+        description: `${pick(BIO_CAREERS, index)} ${pick(BIO_READING, index * 3)}`,
         socialLinks: [
           { network, url: `https://example.com/${network}/${handle}` },
         ],

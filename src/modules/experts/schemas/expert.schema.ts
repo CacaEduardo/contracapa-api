@@ -41,7 +41,7 @@ export class Expert {
   phone!: string | null;
 
   @Prop({ type: String, default: null })
-  podcastUrl!: string | null;
+  description!: string | null;
 
   @Prop({ type: [ExpertSocialLinkSchema], default: [] })
   socialLinks!: ExpertSocialLink[];
