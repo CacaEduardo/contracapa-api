@@ -11,9 +11,19 @@ const optionalText = z
   .nullable()
   .optional();
 
+const optionalEmail = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((value) => (value ?? '').trim().toLowerCase())
+  .refine(
+    (value) => value === '' || z.email().safeParse(value).success,
+    'E-mail inválido',
+  )
+  .transform((value) => value || null);
+
 export const createExpertSchema = z.object({
   fullName: z.string().trim().min(1, 'Informe o nome completo'),
-  email: z.string().trim().toLowerCase().pipe(z.email('E-mail inválido')),
+  email: optionalEmail,
   company: optionalText,
   phone: optionalText,
   description: z

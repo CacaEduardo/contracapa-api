@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  type OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { isValidObjectId, Model } from 'mongoose';
@@ -37,7 +38,7 @@ export type ExpertCounter =
   'reviewCount' | 'episodeCount' | 'recommendationCount';
 
 @Injectable()
-export class ExpertsService {
+export class ExpertsService implements OnModuleInit {
   private readonly logger = new Logger(ExpertsService.name);
 
   constructor(
@@ -46,8 +47,19 @@ export class ExpertsService {
     private readonly storageService: StorageService,
   ) {}
 
+  async onModuleInit(): Promise<void> {
+    if (typeof this.expertModel.syncIndexes !== 'function') {
+      return;
+    }
+
+    // Troca o índice único antigo, que só aceita um e-mail vazio, pelo parcial.
+    await this.expertModel.syncIndexes();
+  }
+
   async create(dto: CreateExpertDto): Promise<ExpertResponse> {
-    await this.assertEmailAvailable(dto.email);
+    if (dto.email) {
+      await this.assertEmailAvailable(dto.email);
+    }
     const slug = await this.generateUniqueSlug(dto.fullName);
 
     const created = await this.expertModel.create({
@@ -130,7 +142,7 @@ export class ExpertsService {
   async update(id: string, dto: UpdateExpertDto): Promise<ExpertResponse> {
     const expert = await this.findById(id);
 
-    if (dto.email !== undefined && dto.email !== expert.email) {
+    if (dto.email && dto.email !== expert.email) {
       await this.assertEmailAvailable(dto.email);
     }
 

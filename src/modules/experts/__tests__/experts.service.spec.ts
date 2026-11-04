@@ -95,6 +95,18 @@ describe('ExpertsService', () => {
       );
     });
 
+    it('aceita criar sem e-mail e não consulta unicidade de e-mail vazio', async () => {
+      mockExpertModel.exists.mockReturnValue(execOf(null));
+      mockExpertModel.create.mockResolvedValue({ ...expert, email: null });
+
+      await service.create({ fullName: 'Ana Souza', email: null });
+
+      expect(mockExpertModel.exists).toHaveBeenCalledTimes(1);
+      expect(mockExpertModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({ email: null, slug: 'ana-souza' }),
+      );
+    });
+
     it('deve lançar ConflictException quando o e-mail já estiver em uso', async () => {
       mockExpertModel.exists.mockReturnValue(execOf({ _id: 'outro' }));
 
@@ -164,6 +176,22 @@ describe('ExpertsService', () => {
         { new: true },
       );
       expect(result.active).toBe(false);
+    });
+
+    it('limpa o e-mail sem consultar unicidade', async () => {
+      mockExpertModel.findById.mockReturnValue(execOf(expert));
+      mockExpertModel.findByIdAndUpdate.mockReturnValue(
+        execOf({ ...expert, email: null }),
+      );
+
+      await service.update('expert-1', { email: null });
+
+      expect(mockExpertModel.exists).not.toHaveBeenCalled();
+      expect(mockExpertModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        'expert-1',
+        { email: null },
+        { new: true },
+      );
     });
 
     it('deve lançar ConflictException ao trocar para e-mail já usado', async () => {

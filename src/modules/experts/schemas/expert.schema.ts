@@ -31,8 +31,8 @@ export class Expert {
   @Prop({ required: true, unique: true, index: true })
   slug!: string;
 
-  @Prop({ required: true, unique: true, lowercase: true, trim: true })
-  email!: string;
+  @Prop({ type: String, default: null, lowercase: true, trim: true })
+  email!: string | null;
 
   @Prop({ type: String, default: null })
   company!: string | null;
@@ -70,3 +70,13 @@ export class Expert {
 
 export type ExpertDocument = HydratedDocument<Expert>;
 export const ExpertSchema = SchemaFactory.createForClass(Expert);
+
+// Vários especialistas podem ficar sem e-mail; a unicidade vale só quando ele existe.
+ExpertSchema.index(
+  { email: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { email: { $type: 'string' } },
+  },
+);
+ExpertSchema.set('autoIndex', false);
