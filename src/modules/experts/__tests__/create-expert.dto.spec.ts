@@ -31,6 +31,16 @@ describe('createExpertSchema', () => {
     ).toBe(false);
   });
 
+  it('aceita e-mail vazio, nulo ou ausente', () => {
+    expect(
+      createExpertSchema.parse({ fullName: 'Ana', email: '  ' }).email,
+    ).toBeNull();
+    expect(
+      createExpertSchema.parse({ fullName: 'Ana', email: null }).email,
+    ).toBeNull();
+    expect(createExpertSchema.parse({ fullName: 'Ana' }).email).toBeNull();
+  });
+
   it('rejeita nome ausente', () => {
     expect(
       createExpertSchema.safeParse({ ...valid, fullName: '  ' }).success,
@@ -79,5 +89,9 @@ describe('updateExpertSchema', () => {
     const result = updateExpertSchema.parse({ company: 'Editora X' });
 
     expect(result).toEqual({ company: 'Editora X' });
+  });
+
+  it('limpa o e-mail quando vem vazio', () => {
+    expect(updateExpertSchema.parse({ email: '  ' }).email).toBeNull();
   });
 });
